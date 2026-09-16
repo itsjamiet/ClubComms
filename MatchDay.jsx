@@ -378,3 +378,4 @@ export default function MatchDayView({ matchdayId, teamId, editable }) {
     </div>
   );
 }
+
