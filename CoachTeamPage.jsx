@@ -1701,3 +1701,4 @@ export default function CoachTeamPage({ profile, onSignOut }) {
     </div>
   );
 }
+
