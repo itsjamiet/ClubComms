@@ -727,3 +727,4 @@ export default function ParentDashboard({ profile, onSignOut }) {
     </div>
   );
 }
+
