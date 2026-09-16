@@ -6,6 +6,69 @@ import AcceptInvite from "./pages/AcceptInvite.jsx";
 import CoachTeamPage from "./pages/CoachTeamPage.jsx";
 import ParentDashboard from "./pages/ParentDashboard.jsx";
 
+function FootballIcon({ size = 44 }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      style={{ display: "inline-block", verticalAlign: "-0.08em", flexShrink: 0 }}
+    >
+      <circle cx="50" cy="50" r="47" fill="#ffffff" stroke="#111827" strokeWidth="4" />
+      <polygon points="50,30 74.7,16 69,43.8" fill="#111827" />
+      <polygon points="69,43.8 89.9,63 61.8,66.2" fill="#111827" />
+      <polygon points="61.8,66.2 50,92 38.2,66.2" fill="#111827" />
+      <polygon points="38.2,66.2 10.1,63 31,43.8" fill="#111827" />
+      <polygon points="31,43.8 25.3,16 50,30" fill="#111827" />
+      <polygon points="50,30 69,43.8 61.8,66.2 38.2,66.2 31,43.8" fill="#111827" />
+    </svg>
+  );
+}
+
+function SplashScreen({ fadingOut }) {
+  return (
+    <div
+      className="fixed inset-0 flex flex-col items-center justify-center transition-opacity duration-300"
+      style={{
+        zIndex: 100,
+        background: "linear-gradient(160deg, #060b16 0%, #0b1730 45%, #0f1e3d 100%)",
+        opacity: fadingOut ? 0 : 1,
+      }}
+    >
+      <div
+        className="font-display flex items-center"
+        style={{
+          fontSize: "3.2rem",
+          fontWeight: 800,
+          letterSpacing: "0.01em",
+          filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
+        }}
+      >
+        <span
+          style={{
+            background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 60%, var(--accent-dark) 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          ClubC
+        </span>
+        <FootballIcon size={44} />
+        <span
+          style={{
+            background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 60%, var(--accent-dark) 100%)",
+            WebkitBackgroundClip: "text",
+            WebkitTextFillColor: "transparent",
+          }}
+        >
+          mms
+        </span>
+      </div>
+      <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>Team management, built for matchday.</p>
+    </div>
+  );
+}
+
 // Shown right after a club logs in for the first time, if their signup
 // didn't get to create the club row yet (e.g. email confirmation was
 // required, so the browser tab that finally has an active session is a
@@ -52,6 +115,7 @@ function CreateClubForm({ onCreated }) {
 }
 
 export default function App() {
+  const [splashPhase, setSplashPhase] = useState("visible"); // "visible" -> "fading" -> "gone"
   const [inviteId] = useState(() => new URLSearchParams(window.location.search).get("invite"));
   const [inviteDone, setInviteDone] = useState(false);
 
@@ -59,6 +123,15 @@ export default function App() {
   const [profile, setProfile] = useState(null);
   const [club, setClub] = useState(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+
+  useEffect(() => {
+    const t1 = setTimeout(() => setSplashPhase("fading"), 1300);
+    const t2 = setTimeout(() => setSplashPhase("gone"), 1600);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
@@ -104,6 +177,11 @@ export default function App() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
   };
+
+  // Splash screen always shows first, ahead of invite links, login, everything.
+  if (splashPhase !== "gone") {
+    return <SplashScreen fadingOut={splashPhase === "fading"} />;
+  }
 
   // Invite links take priority over everything else, whether or not
   // the person already has a session.
