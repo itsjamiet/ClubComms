@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { Shield, LogOut, Plus, Users, ArrowLeft, Camera, Trash2, Circle, ArrowUpRight, Eraser, Pencil } from "lucide-react";
+import { Shield, LogOut, Plus, Users, ArrowLeft, Camera, Trash2, Circle, ArrowUpRight, Eraser, Pencil, ChevronRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
-import MatchDayView from "./MatchDay.jsx";
+import MatchDayView, { buildSegments } from "./MatchDay.jsx";
 import DocumentsView from "./Documents.jsx";
 import TrainingSessionView, { Quadrant, TOOLS, defaultPitch } from "./TrainingSession.jsx";
 import ClubCalendarTab from "./ClubCalendar.jsx";
@@ -941,6 +941,16 @@ function EventForm({ teamId, onCreated, onCancel }) {
 
     if (form.type === "match") {
       await populateWeeklyStats(form.date, form.opponent);
+      const newEvent = data[0];
+      if (newEvent) {
+        await supabase.from("matchdays").insert({
+          event_id: newEvent.id,
+          team_id: teamId,
+          format: "7v7",
+          breakdown: "quarters",
+          segments: buildSegments("quarters"),
+        });
+      }
     }
 
     setSaving(false);
@@ -1391,6 +1401,99 @@ function TeamCalendar({ team, editable, ownChildIds }) {
   );
 }
 
+function MatchDaysTab({ team }) {
+  const [matches, setMatches] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [openMatchdayId, setOpenMatchdayId] = useState(null);
+  const [resolving, setResolving] = useState(false);
+
+  const load = async () => {
+    setLoading(true);
+    const { data: events } = await supabase
+      .from("calendar_events")
+      .select("*")
+      .eq("team_id", team.id)
+      .eq("type", "match")
+      .order("date", { ascending: false });
+    const eventIds = (events || []).map((e) => e.id);
+    const { data: mds } = eventIds.length
+      ? await supabase.from("matchdays").select("id, event_id").in("event_id", eventIds)
+      : { data: [] };
+    const mdByEvent = Object.fromEntries((mds || []).map((m) => [m.event_id, m.id]));
+    setMatches((events || []).map((e) => ({ ...e, matchdayId: mdByEvent[e.id] || null })));
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [team.id]);
+
+  const openMatch = async (match) => {
+    if (match.matchdayId) {
+      setOpenMatchdayId(match.matchdayId);
+      return;
+    }
+    // Legacy match created before matchdays existed -- create one now.
+    setResolving(true);
+    const { data, error } = await supabase
+      .from("matchdays")
+      .insert({ event_id: match.id, team_id: team.id, format: "7v7", breakdown: "quarters", segments: buildSegments("quarters") })
+      .select()
+      .single();
+    setResolving(false);
+    if (!error && data) setOpenMatchdayId(data.id);
+  };
+
+  if (openMatchdayId) {
+    return (
+      <div>
+        <div className="max-w-6xl mx-auto px-4 pt-6">
+          <button className="text-sm flex items-center gap-1" style={{ color: "var(--muted)" }} onClick={() => { setOpenMatchdayId(null); load(); }}>
+            <ArrowLeft className="w-3.5 h-3.5" /> Back to match days
+          </button>
+        </div>
+        <MatchDayView matchdayId={openMatchdayId} teamId={team.id} editable={true} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8">
+      <h1 className="font-display text-2xl tracking-wide mb-1">Match Days</h1>
+      <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
+        Every match on the calendar gets its own Match Day — squad selections, goals, and comments per quarter or half.
+      </p>
+      {loading || resolving ? (
+        <p style={{ color: "var(--muted)" }}>Loading…</p>
+      ) : matches.length === 0 ? (
+        <div className="glass-panel p-10 text-center" style={{ color: "var(--muted)" }}>
+          No matches on the calendar yet — add one from the Calendar tab.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {matches.map((m) => (
+            <button key={m.id} className="glass-card w-full flex items-center gap-3 p-3 text-left" onClick={() => openMatch(m)}>
+              <div className="flex-1">
+                <div className="font-medium">
+                  {m.title || `vs ${m.opponent || "TBC"}`}
+                  {m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
+                    <span className="ml-2 font-mono text-sm" style={{ color: "var(--gold-light)" }}>{m.our_score} - {m.their_score}</span>
+                  )}
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+                  {m.date}{m.time ? ` · ${m.time}` : ""}{m.location ? ` · ${m.location}` : ""}
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--muted)" }} />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrainingPlansTab({ team }) {
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1585,7 +1688,7 @@ export default function CoachTeamPage({ profile, onSignOut }) {
       ) : activeTab === "clubCalendar" ? (
         <ClubCalendarTab teams={clubTeams} />
       ) : activeTab === "matchday" ? (
-        activeTeam && <MatchDayView team={activeTeam} editable={true} />
+        activeTeam && <MatchDaysTab team={activeTeam} />
       ) : activeTab === "plans" ? (
         activeTeam && <TrainingPlansTab team={activeTeam} />
       ) : activeTab === "session" ? (
