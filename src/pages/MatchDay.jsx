@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient.js";
 
-const FORMAT_SIZES = { "5v5": 5, "7v7": 7, "9v9": 9, "11v11": 11 };
+export const FORMAT_SIZES = { "5v5": 5, "7v7": 7, "9v9": 9, "11v11": 11 };
 const BREAKDOWN_COUNTS = { quarters: 4, halves: 2 };
 const BREAKDOWN_LABELS = {
   quarters: ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"],
@@ -25,10 +25,10 @@ function shortLabel(name) {
   return `${parts[0]} ${parts[1][0]}`;
 }
 
-function buildSegments(breakdown) {
+export function buildSegments(breakdown) {
   const count = BREAKDOWN_COUNTS[breakdown];
   const labels = BREAKDOWN_LABELS[breakdown];
-  return Array.from({ length: count }).map((_, i) => ({ id: uid(), label: labels[i], playerIds: [], positions: {} }));
+  return Array.from({ length: count }).map((_, i) => ({ id: uid(), label: labels[i], playerIds: [], positions: {}, notes: "", goals: {} }));
 }
 
 function autoLayoutPositions(selectedIds, players) {
@@ -59,7 +59,7 @@ function autoLayoutPositions(selectedIds, players) {
   return positions;
 }
 
-function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelection, onMovePlayer }) {
+function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelection, onMovePlayer, onNotesChange, onGoalChange }) {
   const svgRef = useRef(null);
   const [picking, setPicking] = useState(false);
   const [dragId, setDragId] = useState(null);
@@ -67,6 +67,7 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const onPitch = segment.playerIds.map((id) => byId[id]).filter(Boolean);
   const subs = players.filter((p) => !segment.playerIds.includes(p.id));
+  const goals = segment.goals || {};
 
   const getPoint = (e) => {
     const rect = svgRef.current.getBoundingClientRect();
@@ -156,9 +157,9 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
 
       <div className="text-xs uppercase tracking-wide mb-1" style={{ color: "var(--muted)" }}>Substitutes</div>
       {subs.length === 0 ? (
-        <div className="text-sm" style={{ color: "var(--muted)" }}>None</div>
+        <div className="text-sm mb-3" style={{ color: "var(--muted)" }}>None</div>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1.5 mb-3">
           {subs.map((p) => (
             <span key={p.id} className="text-xs px-2 py-1 rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
               {p.name || "Unnamed"} {p.number ? `#${p.number}` : ""}
@@ -166,11 +167,62 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
           ))}
         </div>
       )}
+
+      {onPitch.length > 0 && (
+        <div className="mb-3">
+          <div className="text-xs uppercase tracking-wide mb-1.5" style={{ color: "var(--muted)" }}>Goals this {segment.label.toLowerCase()}</div>
+          <div className="space-y-1.5">
+            {onPitch.map((p) => {
+              const count = goals[p.id] || 0;
+              return (
+                <div key={p.id} className="flex items-center gap-2 p-1.5 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <span className="text-sm flex-1">{p.name || "Unnamed"}</span>
+                  {editable ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="btn-ghost w-6 h-6 rounded-full flex items-center justify-center text-sm disabled:opacity-30"
+                        disabled={count === 0}
+                        onClick={() => onGoalChange(segment.id, p.id, Math.max(0, count - 1))}
+                      >
+                        −
+                      </button>
+                      <span className="font-mono text-sm w-4 text-center">{count}</span>
+                      <button
+                        className="btn-ghost w-6 h-6 rounded-full flex items-center justify-center text-sm"
+                        onClick={() => onGoalChange(segment.id, p.id, count + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : (
+                    count > 0 && (
+                      <span className="text-xs px-2 py-0.5 rounded-full font-mono" style={{ background: "rgba(212,175,55,0.18)", color: "#f1d97a" }}>
+                        {count} {count === 1 ? "goal" : "goals"}
+                      </span>
+                    )
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Comments</label>
+        <textarea
+          className="input-dark w-full mt-1 min-h-[60px]"
+          placeholder={editable ? `Notes for this ${segment.label.toLowerCase()}…` : "No comments added yet."}
+          value={segment.notes || ""}
+          disabled={!editable}
+          onChange={(e) => onNotesChange(segment.id, e.target.value)}
+        />
+      </div>
     </div>
   );
 }
 
-export default function MatchDayView({ team, editable }) {
+export default function MatchDayView({ matchdayId, teamId, editable }) {
   const [matchday, setMatchday] = useState(null);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -180,24 +232,24 @@ export default function MatchDayView({ team, editable }) {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      supabase.from("teams").select("matchday").eq("id", team.id).single(),
-      supabase.from("players").select("*").eq("team_id", team.id),
-    ]).then(([{ data: t }, { data: pl }]) => {
-      const md = t?.matchday && t.matchday.segments?.length
-        ? t.matchday
+      supabase.from("matchdays").select("*").eq("id", matchdayId).single(),
+      supabase.from("players").select("*").eq("team_id", teamId),
+    ]).then(([{ data: md }, { data: pl }]) => {
+      const normalized = md
+        ? { ...md, segments: (md.segments || []).map((s) => ({ notes: "", goals: {}, ...s })) }
         : { format: "7v7", breakdown: "quarters", segments: buildSegments("quarters") };
-      setMatchday(md);
+      setMatchday(normalized);
       setPlayers(pl || []);
       setLoading(false);
     });
-  }, [team.id]);
+  }, [matchdayId, teamId]);
 
   const persist = (next) => {
     setMatchday(next);
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(async () => {
       setSaving(true);
-      await supabase.from("teams").update({ matchday: next }).eq("id", team.id);
+      await supabase.from("matchdays").update({ format: next.format, breakdown: next.breakdown, segments: next.segments }).eq("id", matchdayId);
       setSaving(false);
     }, 400);
   };
@@ -228,6 +280,18 @@ export default function MatchDayView({ team, editable }) {
   const movePlayer = (segmentId, playerId, pos) => {
     const segments = matchday.segments.map((s) =>
       s.id !== segmentId ? s : { ...s, positions: { ...s.positions, [playerId]: pos } }
+    );
+    persist({ ...matchday, segments });
+  };
+
+  const setNotes = (segmentId, notes) => {
+    const segments = matchday.segments.map((s) => (s.id !== segmentId ? s : { ...s, notes }));
+    persist({ ...matchday, segments });
+  };
+
+  const setGoal = (segmentId, playerId, count) => {
+    const segments = matchday.segments.map((s) =>
+      s.id !== segmentId ? s : { ...s, goals: { ...(s.goals || {}), [playerId]: count } }
     );
     persist({ ...matchday, segments });
   };
@@ -306,6 +370,8 @@ export default function MatchDayView({ team, editable }) {
             editable={editable}
             onToggleSelection={toggleSelection}
             onMovePlayer={movePlayer}
+            onNotesChange={setNotes}
+            onGoalChange={setGoal}
           />
         ))}
       </div>
