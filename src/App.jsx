@@ -14,13 +14,26 @@ function FootballIcon({ size = 44 }) {
       viewBox="0 0 100 100"
       style={{ display: "inline-block", verticalAlign: "-0.08em", flexShrink: 0 }}
     >
+      <defs>
+        <clipPath id="ballClip">
+          <circle cx="50" cy="50" r="45" />
+        </clipPath>
+      </defs>
       <circle cx="50" cy="50" r="47" fill="#ffffff" stroke="#111827" strokeWidth="4" />
-      <polygon points="50,30 74.7,16 69,43.8" fill="#111827" />
-      <polygon points="69,43.8 89.9,63 61.8,66.2" fill="#111827" />
-      <polygon points="61.8,66.2 50,92 38.2,66.2" fill="#111827" />
-      <polygon points="38.2,66.2 10.1,63 31,43.8" fill="#111827" />
-      <polygon points="31,43.8 25.3,16 50,30" fill="#111827" />
-      <polygon points="50,30 69,43.8 61.8,66.2 38.2,66.2 31,43.8" fill="#111827" />
+      <g clipPath="url(#ballClip)">
+        {/* central pentagon, slightly above center like a real match ball */}
+        <polygon points="50,32 65,43 59,61 41,61 35,43" fill="#111827" />
+        {/* short seam stubs from each pentagon edge */}
+        <path d="M41,61 L33,66" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
+        <path d="M59,61 L67,66" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
+        <path d="M65,43 L74,40" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
+        <path d="M35,43 L26,40" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
+        <path d="M50,32 L50,23" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
+        {/* a few asymmetric partial patches near the edge, like a real ball viewed off-axis */}
+        <polygon points="80,60 92,66 88,79 76,76" fill="#111827" />
+        <polygon points="20,66 30,60 34,72 24,79" fill="#111827" />
+        <polygon points="55,88 66,82 70,94 58,97" fill="#111827" />
+      </g>
     </svg>
   );
 }
@@ -125,8 +138,8 @@ export default function App() {
   const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
-    const t1 = setTimeout(() => setSplashPhase("fading"), 1300);
-    const t2 = setTimeout(() => setSplashPhase("gone"), 1600);
+    const t1 = setTimeout(() => setSplashPhase("fading"), 2300);
+    const t2 = setTimeout(() => setSplashPhase("gone"), 2600);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
@@ -240,3 +253,4 @@ export default function App() {
 
   return <ClubDashboard profile={profile} club={club} onSignOut={handleSignOut} />;
 }
+
