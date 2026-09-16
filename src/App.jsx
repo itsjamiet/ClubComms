@@ -5,58 +5,7 @@ import ClubDashboard from "./pages/ClubDashboard.jsx";
 import AcceptInvite from "./pages/AcceptInvite.jsx";
 import CoachTeamPage from "./pages/CoachTeamPage.jsx";
 import ParentDashboard from "./pages/ParentDashboard.jsx";
-
-function hexPoints(cx, cy, size) {
-  const pts = [];
-  for (let i = 0; i < 6; i++) {
-    const angle = (Math.PI / 180) * (60 * i);
-    pts.push(`${(cx + size * Math.cos(angle)).toFixed(1)},${(cy + size * Math.sin(angle)).toFixed(1)}`);
-  }
-  return pts.join(" ");
-}
-
-function pentPoints(cx, cy, size) {
-  const pts = [];
-  for (let i = 0; i < 5; i++) {
-    const angle = (Math.PI / 180) * (-90 + 72 * i);
-    pts.push(`${(cx + size * Math.cos(angle)).toFixed(1)},${(cy + size * Math.sin(angle)).toFixed(1)}`);
-  }
-  return pts.join(" ");
-}
-
-function FootballIcon({ size = "0.55em" }) {
-  const hexSize = 15;
-  const strokeProps = { stroke: "#111827", strokeWidth: 1.6, strokeLinejoin: "round" };
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 100 100"
-      style={{ display: "inline-block", verticalAlign: "-0.08em", flexShrink: 0 }}
-    >
-      <defs>
-        <clipPath id="ballClip2">
-          <circle cx="50" cy="50" r="46" />
-        </clipPath>
-      </defs>
-      <circle cx="50" cy="50" r="47" fill="#ffffff" stroke="#111827" strokeWidth="3" />
-      <g clipPath="url(#ballClip2)">
-        {/* top hex, cropped by the ball's edge */}
-        <polygon points={hexPoints(50, 11, hexSize)} fill="#111827" {...strokeProps} />
-        {/* ring of hexes around the center */}
-        <polygon points={hexPoints(76, 50, hexSize)} fill="#111827" {...strokeProps} />
-        <polygon points={hexPoints(63, 72.5, hexSize)} fill="#ffffff" {...strokeProps} />
-        <polygon points={hexPoints(37, 72.5, hexSize)} fill="#111827" {...strokeProps} />
-        <polygon points={hexPoints(24, 50, hexSize)} fill="#ffffff" {...strokeProps} />
-        <polygon points={hexPoints(37, 27.5, hexSize)} fill="#ffffff" {...strokeProps} />
-        <polygon points={hexPoints(63, 27.5, hexSize)} fill="#ffffff" {...strokeProps} />
-        {/* center pentagon, connecting the hexes like a real ball */}
-        <polygon points={pentPoints(50, 50, 13)} fill="#111827" {...strokeProps} />
-      </g>
-      <circle cx="50" cy="50" r="47" fill="none" stroke="#111827" strokeWidth="3" />
-    </svg>
-  );
-}
+import { SPLASH_LOGO } from "./assets/splashLogo.js";
 
 function SplashScreen({ fadingOut }) {
   return (
@@ -64,40 +13,20 @@ function SplashScreen({ fadingOut }) {
       className="fixed inset-0 flex flex-col items-center justify-center transition-opacity duration-300"
       style={{
         zIndex: 100,
-        background: "linear-gradient(160deg, #060b16 0%, #0b1730 45%, #0f1e3d 100%)",
+        background: "radial-gradient(circle at 50% 45%, #0b1730 0%, #060b16 70%)",
         opacity: fadingOut ? 0 : 1,
       }}
     >
-      <div
-        className="font-display flex items-center"
+      <img
+        src={SPLASH_LOGO}
+        alt="ClubComms"
         style={{
-          fontSize: "3.2rem",
-          fontWeight: 800,
-          letterSpacing: "0.01em",
-          filter: "drop-shadow(0 2px 6px rgba(0,0,0,0.45))",
+          width: "min(80vw, 420px)",
+          height: "auto",
+          WebkitMaskImage: "radial-gradient(ellipse 60% 60% at 50% 50%, black 55%, transparent 100%)",
+          maskImage: "radial-gradient(ellipse 60% 60% at 50% 50%, black 55%, transparent 100%)",
         }}
-      >
-        <span
-          style={{
-            background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 60%, var(--accent-dark) 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
-        >
-          ClubC
-        </span>
-        <FootballIcon />
-        <span
-          style={{
-            background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 60%, var(--accent-dark) 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
-        >
-          mms
-        </span>
-      </div>
-      <p className="text-sm mt-2" style={{ color: "var(--muted)" }}>Team management, built for matchday.</p>
+      />
     </div>
   );
 }
