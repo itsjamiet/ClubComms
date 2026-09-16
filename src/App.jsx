@@ -6,7 +6,27 @@ import AcceptInvite from "./pages/AcceptInvite.jsx";
 import CoachTeamPage from "./pages/CoachTeamPage.jsx";
 import ParentDashboard from "./pages/ParentDashboard.jsx";
 
-function FootballIcon({ size = 44 }) {
+function hexPoints(cx, cy, size) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i);
+    pts.push(`${(cx + size * Math.cos(angle)).toFixed(1)},${(cy + size * Math.sin(angle)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+function pentPoints(cx, cy, size) {
+  const pts = [];
+  for (let i = 0; i < 5; i++) {
+    const angle = (Math.PI / 180) * (-90 + 72 * i);
+    pts.push(`${(cx + size * Math.cos(angle)).toFixed(1)},${(cy + size * Math.sin(angle)).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+function FootballIcon({ size = "0.55em" }) {
+  const hexSize = 15;
+  const strokeProps = { stroke: "#111827", strokeWidth: 1.6, strokeLinejoin: "round" };
   return (
     <svg
       width={size}
@@ -15,25 +35,25 @@ function FootballIcon({ size = 44 }) {
       style={{ display: "inline-block", verticalAlign: "-0.08em", flexShrink: 0 }}
     >
       <defs>
-        <clipPath id="ballClip">
-          <circle cx="50" cy="50" r="45" />
+        <clipPath id="ballClip2">
+          <circle cx="50" cy="50" r="46" />
         </clipPath>
       </defs>
-      <circle cx="50" cy="50" r="47" fill="#ffffff" stroke="#111827" strokeWidth="4" />
-      <g clipPath="url(#ballClip)">
-        {/* central pentagon, slightly above center like a real match ball */}
-        <polygon points="50,32 65,43 59,61 41,61 35,43" fill="#111827" />
-        {/* short seam stubs from each pentagon edge */}
-        <path d="M41,61 L33,66" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
-        <path d="M59,61 L67,66" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
-        <path d="M65,43 L74,40" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
-        <path d="M35,43 L26,40" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
-        <path d="M50,32 L50,23" stroke="#111827" strokeWidth="3" strokeLinecap="round" />
-        {/* a few asymmetric partial patches near the edge, like a real ball viewed off-axis */}
-        <polygon points="80,60 92,66 88,79 76,76" fill="#111827" />
-        <polygon points="20,66 30,60 34,72 24,79" fill="#111827" />
-        <polygon points="55,88 66,82 70,94 58,97" fill="#111827" />
+      <circle cx="50" cy="50" r="47" fill="#ffffff" stroke="#111827" strokeWidth="3" />
+      <g clipPath="url(#ballClip2)">
+        {/* top hex, cropped by the ball's edge */}
+        <polygon points={hexPoints(50, 11, hexSize)} fill="#111827" {...strokeProps} />
+        {/* ring of hexes around the center */}
+        <polygon points={hexPoints(76, 50, hexSize)} fill="#111827" {...strokeProps} />
+        <polygon points={hexPoints(63, 72.5, hexSize)} fill="#ffffff" {...strokeProps} />
+        <polygon points={hexPoints(37, 72.5, hexSize)} fill="#111827" {...strokeProps} />
+        <polygon points={hexPoints(24, 50, hexSize)} fill="#ffffff" {...strokeProps} />
+        <polygon points={hexPoints(37, 27.5, hexSize)} fill="#ffffff" {...strokeProps} />
+        <polygon points={hexPoints(63, 27.5, hexSize)} fill="#ffffff" {...strokeProps} />
+        {/* center pentagon, connecting the hexes like a real ball */}
+        <polygon points={pentPoints(50, 50, 13)} fill="#111827" {...strokeProps} />
       </g>
+      <circle cx="50" cy="50" r="47" fill="none" stroke="#111827" strokeWidth="3" />
     </svg>
   );
 }
@@ -66,7 +86,7 @@ function SplashScreen({ fadingOut }) {
         >
           ClubC
         </span>
-        <FootballIcon size={44} />
+        <FootballIcon />
         <span
           style={{
             background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 60%, var(--accent-dark) 100%)",
