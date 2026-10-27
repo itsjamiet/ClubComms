@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
-
-function toDateString(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+import { toDateString } from "../lib/utils.js";
+import ClubEvents from "./ClubEvents.jsx";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -126,7 +121,7 @@ function ClubCalendarDay({ dateStr, teams, onBack }) {
   );
 }
 
-export default function ClubCalendarTab({ teams }) {
+export default function ClubCalendarTab({ teams, role = "club", userId, clubId, onResponded }) {
   const todayStr = toDateString(new Date());
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -179,7 +174,11 @@ export default function ClubCalendarTab({ teams }) {
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">
-      <h1 className="font-display text-2xl tracking-wide mb-2">Club Calendar</h1>
+      <h1 className="font-display text-2xl tracking-wide mb-6">Club Calendar</h1>
+
+      <ClubEvents role={role} clubId={clubId || teams[0]?.club_id} userId={userId} onResponded={onResponded} />
+
+      <h2 className="font-display text-xl tracking-wide mb-1">Team calendar</h2>
       <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
         Matches and training from every team, in one place. Tap a day for details.
       </p>
@@ -230,5 +229,4 @@ export default function ClubCalendarTab({ teams }) {
     </div>
   );
 }
-
 

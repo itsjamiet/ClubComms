@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-import { Shield, LogOut, Users, ArrowLeft, ChevronRight } from "lucide-react";
+import { Users, ArrowLeft, ChevronRight, Camera } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
+import { toDateString, resizeImage, calcAge, displayAge, awardsForStat, statTotals } from "../lib/utils.js";
+import AppHeader, { useClubForTeam } from "../components/AppHeader.jsx";
+import { useAlertCounts } from "../lib/notifications.js";
+import Announcements from "./Announcements.jsx";
+import { GazetteView } from "./MatchDay.jsx";
+import { buildGazetteHtml } from "../lib/gazette.js";
 
-function toDateString(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-import MatchDayView from "./MatchDay.jsx";
 import DocumentsView from "./Documents.jsx";
 import TrainingSessionView, { Quadrant } from "./TrainingSession.jsx";
 import ClubCalendarTab from "./ClubCalendar.jsx";
@@ -44,7 +43,7 @@ function PlayerCard({ player, onOpen }) {
       <div className="text-xs mt-1 flex items-center justify-center gap-2" style={{ color: "var(--muted)" }}>
         <span className="font-mono">#{player.number || "—"}</span>
         <span>·</span>
-        <span>Age {player.age || "—"}</span>
+        <span>Age {displayAge(player)}</span>
       </div>
       <div className="text-xs mt-1 font-mono px-2 py-0.5 rounded-full" style={{ color: "var(--accent)", background: "rgba(46,124,246,0.12)" }}>
         {player.position}
@@ -129,18 +128,6 @@ function ReadOnlyTrainingPlan({ playerId }) {
   );
 }
 
-function statTotals(stats) {
-  const goalsTotal = stats.reduce((s, x) => s + (Number(x.goals) || 0), 0);
-  const savesTotal = stats.reduce((s, x) => s + (Number(x.saves) || 0), 0);
-  const tacklesTotal = stats.reduce((s, x) => s + (Number(x.tackles) || 0), 0);
-  const captainTotal = stats.filter((x) => x.captain).length;
-  const potmTotal = stats.filter((x) => x.potm).length;
-  const minutesPlayedTotal = stats.reduce((s, x) => s + (Number(x.minutes) || 0), 0);
-  const matchMinutesTotal = stats.reduce((s, x) => s + (Number(x.matchMinutes) || 0), 0);
-  const minutesPct = matchMinutesTotal > 0 ? Math.round((minutesPlayedTotal / matchMinutesTotal) * 100) : null;
-  return { goalsTotal, savesTotal, tacklesTotal, captainTotal, potmTotal, minutesPct };
-}
-
 function ReadOnlyWeeklyStats({ stats }) {
   if (!stats || stats.length === 0) {
     return <p className="text-sm" style={{ color: "var(--muted)" }}>No stats logged yet.</p>;
@@ -153,6 +140,7 @@ function ReadOnlyWeeklyStats({ stats }) {
     { label: "Tackles", value: t.tacklesTotal },
     { label: "Captain", value: t.captainTotal },
     { label: "Player of the match", value: t.potmTotal },
+    { label: "Parents' player of the match", value: t.parentsPotmTotal },
   ];
   return (
     <>
@@ -166,10 +154,9 @@ function ReadOnlyWeeklyStats({ stats }) {
               <div>Tackles: <span className="font-mono">{s.tackles || 0}</span></div>
               <div>Saves: <span className="font-mono">{s.saves || 0}</span></div>
             </div>
-            {(s.captain || s.potm) && (
-              <div className="flex gap-1.5 mt-2">
-                {s.captain && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>Captain</span>}
-                {s.potm && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.18)", color: "#f1d97a" }}>POTM</span>}
+            {awardsForStat(s).length > 0 && (
+              <div className="flex flex-col gap-0.5 mt-2 pt-2 text-sm" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", color: "var(--gold-light)" }}>
+                {awardsForStat(s).map((a) => <div key={a}>{a}</div>)}
               </div>
             )}
           </div>
@@ -187,7 +174,54 @@ function ReadOnlyWeeklyStats({ stats }) {
   );
 }
 
-function PlayerView({ player, isOwnChild, onBack }) {
+function PlayerView({ player, isOwnChild, onBack, onUpdated }) {
+  const [name, setName] = useState(player.name || "");
+  const [dob, setDob] = useState(player.date_of_birth || "");
+  const [photoUrl, setPhotoUrl] = useState(player.photo_url || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const handlePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    try {
+      setPhotoUrl(await resizeImage(file));
+      setSaved(false);
+    } catch (err) {
+      setError(err?.message || "Couldn't process that photo — try a different one.");
+    }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    const { error } = await supabase.rpc("update_my_child", {
+      p_player_id: player.id,
+      p_name: name,
+      p_dob: dob || null,
+      p_photo: photoUrl || null,
+    });
+    setSaving(false);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setSaved(true);
+    onUpdated({
+      ...player,
+      name: name.trim() || player.name,
+      date_of_birth: dob || null,
+      age: dob ? String(calcAge(dob)) : player.age,
+      photo_url: photoUrl || null,
+    });
+  };
+
+  const shownPhoto = isOwnChild ? photoUrl : player.photo_url;
+  const shownAge = isOwnChild ? (dob ? calcAge(dob) : player.age || "—") : displayAge(player);
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <button className="text-sm flex items-center gap-1 mb-6" style={{ color: "var(--muted)" }} onClick={onBack}>
@@ -195,22 +229,55 @@ function PlayerView({ player, isOwnChild, onBack }) {
       </button>
 
       <div className="flex flex-col items-center mb-8">
-        <div
-          className="w-28 h-28 rounded-full overflow-hidden border-2 flex items-center justify-center"
-          style={{ borderColor: "var(--accent)", background: "rgba(255,255,255,0.04)" }}
-        >
-          {player.photo_url ? (
-            <img src={player.photo_url} alt={player.name} className="w-full h-full object-cover" />
-          ) : (
-            <Users className="w-9 h-9" style={{ color: "var(--muted)" }} />
-          )}
-        </div>
+        {isOwnChild ? (
+          <label
+            className="w-28 h-28 rounded-full relative group cursor-pointer overflow-hidden border-2 flex items-center justify-center"
+            style={{ borderColor: "var(--accent)", background: "rgba(255,255,255,0.04)" }}
+          >
+            {shownPhoto ? <img src={shownPhoto} alt={name} className="w-full h-full object-cover" /> : <Camera className="w-8 h-8" style={{ color: "var(--muted)" }} />}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+              <Camera className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity" style={{ color: "white" }} />
+            </div>
+            <input type="file" accept="image/*" className="hidden" onChange={handlePhoto} />
+          </label>
+        ) : (
+          <div
+            className="w-28 h-28 rounded-full overflow-hidden border-2 flex items-center justify-center"
+            style={{ borderColor: "var(--accent)", background: "rgba(255,255,255,0.04)" }}
+          >
+            {shownPhoto ? <img src={shownPhoto} alt={player.name} className="w-full h-full object-cover" /> : <Users className="w-9 h-9" style={{ color: "var(--muted)" }} />}
+          </div>
+        )}
+        {isOwnChild && <p className="text-xs mt-2" style={{ color: "var(--muted)" }}>Tap the photo to add or change it</p>}
       </div>
+
+      {isOwnChild ? (
+        <div className="glass-panel p-5 mb-6">
+          <h2 className="font-display text-lg mb-3">Player information</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Name</label>
+              <input className="input-dark w-full mt-1" value={name} onChange={(e) => { setName(e.target.value); setSaved(false); }} />
+            </div>
+            <div>
+              <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Date of birth</label>
+              <input type="date" className="input-dark w-full mt-1" value={dob} onChange={(e) => { setDob(e.target.value); setSaved(false); }} />
+              <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{dob ? `Age ${calcAge(dob) ?? "—"}` : "Adds their age to the team page"}</div>
+            </div>
+          </div>
+          <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>Shirt number and position are set by your coach.</p>
+          {error && <p className="text-sm mt-2" style={{ color: "#f28f8a" }}>{error}</p>}
+          <div className="flex items-center gap-3 mt-3">
+            <button className="btn-accent px-5 py-2 rounded-lg" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
+            {saved && <span className="text-sm" style={{ color: "#6fe39a" }}>Saved</span>}
+          </div>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Name</div>
-          <div className="font-display text-lg mt-1">{player.name || "—"}</div>
+          <div className="font-display text-lg mt-1">{(isOwnChild ? name : player.name) || "—"}</div>
         </div>
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Number</div>
@@ -218,7 +285,7 @@ function PlayerView({ player, isOwnChild, onBack }) {
         </div>
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Age</div>
-          <div className="text-lg mt-1">{player.age || "—"}</div>
+          <div className="text-lg mt-1">{shownAge}</div>
         </div>
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Position</div>
@@ -467,7 +534,7 @@ function ParentTrainingPlansTab({ children }) {
         {children.map((c) => (
           <button key={c.id} className="glass-card w-full flex items-center gap-3 p-3 text-left" onClick={() => setOpenChild(c)}>
             <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 border-2" style={{ borderColor: "var(--accent)" }}>
-              <Users className="w-4 h-4 m-3" style={{ color: "var(--muted)" }} />
+              {c.photo_url ? <img src={c.photo_url} alt="" className="w-full h-full object-cover" /> : <Users className="w-4 h-4 m-3" style={{ color: "var(--muted)" }} />}
             </div>
             <span className="flex-1 font-medium">{c.name || "Unnamed player"}</span>
           </button>
@@ -477,39 +544,63 @@ function ParentTrainingPlansTab({ children }) {
   );
 }
 
-function ParentMatchDaysTab({ teamId }) {
+// Parents only ever see a match once the coach has published its report.
+function ParentMatchDaysTab({ teamId, teamName }) {
   const [matches, setMatches] = useState([]);
+  const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [openMatchdayId, setOpenMatchdayId] = useState(null);
+  const [openId, setOpenId] = useState(null);
+  const club = useClubForTeam(teamId);
 
   useEffect(() => {
     setLoading(true);
-    supabase
-      .from("calendar_events")
-      .select("*")
-      .eq("team_id", teamId)
-      .eq("type", "match")
-      .order("date", { ascending: false })
-      .then(async ({ data: events }) => {
-        const eventIds = (events || []).map((e) => e.id);
-        const { data: mds } = eventIds.length
-          ? await supabase.from("matchdays").select("id, event_id").in("event_id", eventIds)
-          : { data: [] };
-        const mdByEvent = Object.fromEntries((mds || []).map((m) => [m.event_id, m.id]));
-        setMatches((events || []).map((e) => ({ ...e, matchdayId: mdByEvent[e.id] || null })));
-        setLoading(false);
-      });
+    setOpenId(null);
+    (async () => {
+      const [{ data: events }, { data: reports }, { data: pls }] = await Promise.all([
+        supabase.from("calendar_events").select("*").eq("team_id", teamId).eq("type", "match").order("date", { ascending: false }),
+        supabase.from("match_reports").select("*").eq("team_id", teamId),
+        supabase.from("players").select("id, name, photo_url").eq("team_id", teamId),
+      ]);
+      const byEvent = Object.fromEntries((reports || []).map((r) => [r.event_id, r]));
+      setMatches((events || []).map((e) => ({ ...e, report: byEvent[e.id] || null })));
+      setPlayers(pls || []);
+      setLoading(false);
+    })();
   }, [teamId]);
 
-  if (openMatchdayId) {
+  const open = matches.find((m) => m.id === openId);
+
+  if (open) {
+    const byId = Object.fromEntries(players.map((p) => [p.id, p]));
+    const aw = open.report?.awards || {};
+    const html = open.report
+      ? buildGazetteHtml({
+          teamName,
+          clubName: club?.name,
+          clubLogo: club?.logo_url,
+          headline: open.report.headline,
+          body: open.report.body,
+          date: open.date,
+          opponent: open.opponent,
+          ourScore: open.our_score,
+          theirScore: open.their_score,
+          captain: byId[aw.captain],
+          potm: byId[aw.potm],
+          parentsPotm: byId[aw.parentsPotm],
+        })
+      : null;
     return (
-      <div>
-        <div className="max-w-6xl mx-auto px-4 pt-6">
-          <button className="text-sm flex items-center gap-1" style={{ color: "var(--muted)" }} onClick={() => setOpenMatchdayId(null)}>
-            <ArrowLeft className="w-3.5 h-3.5" /> Back to match days
-          </button>
-        </div>
-        <MatchDayView matchdayId={openMatchdayId} teamId={teamId} editable={false} />
+      <div className="max-w-4xl mx-auto px-4 py-8">
+        <button className="text-sm flex items-center gap-1 mb-6" style={{ color: "var(--muted)" }} onClick={() => setOpenId(null)}>
+          <ArrowLeft className="w-3.5 h-3.5" /> Back to match days
+        </button>
+        {html ? (
+          <GazetteView html={html} fileName={`${teamName} Gazette ${open.date || ""}`} />
+        ) : (
+          <div className="glass-panel p-10 text-center" style={{ color: "var(--muted)" }}>
+            The match report hasn't been published yet — check back soon.
+          </div>
+        )}
       </div>
     );
   }
@@ -518,7 +609,7 @@ function ParentMatchDaysTab({ teamId }) {
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="font-display text-2xl tracking-wide mb-1">Match Days</h1>
       <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-        Squad selections, goals, and comments for each match.
+        Each match's report appears here once your coach has published it.
       </p>
       {loading ? (
         <p style={{ color: "var(--muted)" }}>Loading…</p>
@@ -527,25 +618,20 @@ function ParentMatchDaysTab({ teamId }) {
       ) : (
         <div className="space-y-2">
           {matches.map((m) => (
-            <button
-              key={m.id}
-              className="glass-card w-full flex items-center gap-3 p-3 text-left disabled:opacity-50"
-              disabled={!m.matchdayId}
-              onClick={() => m.matchdayId && setOpenMatchdayId(m.matchdayId)}
-            >
+            <button key={m.id} className="glass-card w-full flex items-center gap-3 p-3 text-left" onClick={() => setOpenId(m.id)}>
               <div className="flex-1">
                 <div className="font-medium">
                   {m.title || `vs ${m.opponent || "TBC"}`}
-                  {m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
+                  {m.report && m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
                     <span className="ml-2 font-mono text-sm" style={{ color: "var(--gold-light)" }}>{m.our_score} - {m.their_score}</span>
                   )}
                 </div>
                 <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                   {m.date}{m.time ? ` · ${m.time}` : ""}{m.location ? ` · ${m.location}` : ""}
-                  {!m.matchdayId && " · No lineup published yet"}
+                  {m.report ? " · Match report available" : ""}
                 </div>
               </div>
-              {m.matchdayId && <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--muted)" }} />}
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--muted)" }} />
             </button>
           ))}
         </div>
@@ -553,6 +639,17 @@ function ParentMatchDaysTab({ teamId }) {
     </div>
   );
 }
+
+const PARENT_TABS = [
+  { id: "team", label: "Team" },
+  { id: "calendar", label: "Calendar" },
+  { id: "clubCalendar", label: "Club Calendar" },
+  { id: "announcements", label: "Announcements" },
+  { id: "matchday", label: "Match Day" },
+  { id: "plans", label: "Training Plans" },
+  { id: "session", label: "Training Session" },
+  { id: "documents", label: "Documents" },
+];
 
 export default function ParentDashboard({ profile, onSignOut }) {
   const [children, setChildren] = useState([]);
@@ -562,11 +659,12 @@ export default function ParentDashboard({ profile, onSignOut }) {
   const [roster, setRoster] = useState([]);
   const [rosterLoading, setRosterLoading] = useState(false);
   const [openPlayer, setOpenPlayer] = useState(null);
+  const { counts, refresh, markAnnouncementsSeen } = useAlertCounts(profile.id);
 
   useEffect(() => {
     supabase
       .from("parent_child_links")
-      .select("players(id, name, team_id, teams(id, name))")
+      .select("players(id, name, team_id, photo_url, teams(id, name, club_id, age_group))")
       .eq("parent_id", profile.id)
       .then(({ data }) => {
         const kids = (data || []).map((r) => r.players).filter(Boolean);
@@ -595,17 +693,27 @@ export default function ParentDashboard({ profile, onSignOut }) {
   });
   const teamOptions = Object.values(teamsMap);
   const ownChildIds = new Set(children.map((c) => c.id));
+  const activeTeam = teamsMap[activeTeamId];
+  const club = useClubForTeam(activeTeamId);
 
   const [clubTeams, setClubTeams] = useState([]);
   useEffect(() => {
-    if (!activeTeamId) return;
-    supabase.from("teams").select("club_id").eq("id", activeTeamId).single().then(({ data }) => {
-      if (!data?.club_id) return;
-      supabase.from("teams").select("id, name, logo_url").eq("club_id", data.club_id).then(({ data: ct }) => {
-        setClubTeams(ct || []);
-      });
+    if (!activeTeam?.club_id) return;
+    supabase.from("teams").select("id, name, logo_url, club_id").eq("club_id", activeTeam.club_id).then(({ data: ct }) => {
+      setClubTeams(ct || []);
     });
-  }, [activeTeamId]);
+  }, [activeTeam?.club_id]);
+
+  const handlePlayerUpdated = (updated) => {
+    setRoster((r) => r.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
+    setChildren((c) => c.map((k) => (k.id === updated.id ? { ...k, name: updated.name, photo_url: updated.photo_url } : k)));
+    setOpenPlayer((p) => (p && p.id === updated.id ? { ...p, ...updated } : p));
+  };
+
+  const goTab = (id) => {
+    setActiveTab(id);
+    refresh();
+  };
 
   if (loading) {
     return (
@@ -626,84 +734,60 @@ export default function ParentDashboard({ profile, onSignOut }) {
     );
   }
 
+  const badgeFor = (id) => (id === "announcements" ? counts.announcements : id === "clubCalendar" ? counts.events : 0);
+
   return (
     <div className="min-h-screen">
-      <div className="flex items-center justify-between px-6 h-16" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div className="flex items-center gap-3">
-          <Shield className="w-5 h-5" style={{ color: "var(--accent)" }} />
-          {teamOptions.length > 1 ? (
+      <AppHeader
+        title={activeTeam?.name}
+        subtitle={[club?.name, activeTeam?.age_group].filter(Boolean).join(" · ")}
+        logo={club?.logo_url}
+        onSignOut={onSignOut}
+        left={
+          teamOptions.length > 1 ? (
             <select
-              className="text-sm py-1.5 px-2 rounded-lg"
+              className="text-sm py-1.5 px-2 rounded-lg max-w-[140px]"
               style={{ background: "#2E4E80", color: "white", border: "1px solid rgba(255,255,255,0.14)" }}
               value={activeTeamId}
               onChange={(e) => { setActiveTeamId(e.target.value); setOpenPlayer(null); }}
             >
               {teamOptions.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-          ) : (
-            <span className="font-display text-lg tracking-wide">{teamsMap[activeTeamId]?.name}</span>
-          )}
-        </div>
-        <button className="btn-ghost p-2 rounded-lg" onClick={onSignOut} title="Log out">
-          <LogOut className="w-4 h-4" />
-        </button>
-      </div>
+          ) : null
+        }
+      />
 
       {!openPlayer && (
-        <div className="flex gap-2 px-6 pt-4">
-          <button
-            className={activeTab === "team" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("team")}
-          >
-            Team
-          </button>
-          <button
-            className={activeTab === "calendar" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("calendar")}
-          >
-            Calendar
-          </button>
-          <button
-            className={activeTab === "clubCalendar" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("clubCalendar")}
-          >
-            Club Calendar
-          </button>
-          <button
-            className={activeTab === "matchday" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("matchday")}
-          >
-            Match Day
-          </button>
-          <button
-            className={activeTab === "plans" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("plans")}
-          >
-            Training Plans
-          </button>
-          <button
-            className={activeTab === "session" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("session")}
-          >
-            Training Session
-          </button>
-          <button
-            className={activeTab === "documents" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("documents")}
-          >
-            Documents
-          </button>
+        <div className="flex flex-wrap gap-2 px-6 pt-4">
+          {PARENT_TABS.map((t) => (
+            <button
+              key={t.id}
+              className={activeTab === t.id ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
+              onClick={() => goTab(t.id)}
+            >
+              {t.label}
+              {badgeFor(t.id) > 0 && <span className="tab-badge">{badgeFor(t.id)}</span>}
+            </button>
+          ))}
         </div>
       )}
 
       {openPlayer ? (
-        <PlayerView player={openPlayer} isOwnChild={ownChildIds.has(openPlayer.id)} onBack={() => setOpenPlayer(null)} />
+        <PlayerView
+          key={openPlayer.id}
+          player={openPlayer}
+          isOwnChild={ownChildIds.has(openPlayer.id)}
+          onBack={() => setOpenPlayer(null)}
+          onUpdated={handlePlayerUpdated}
+        />
       ) : activeTab === "calendar" ? (
         <ParentCalendar team={{ id: activeTeamId }} ownChildIds={ownChildIds} />
       ) : activeTab === "clubCalendar" ? (
-        <ClubCalendarTab teams={clubTeams} />
+        <ClubCalendarTab teams={clubTeams} role="parent" userId={profile.id} clubId={activeTeam?.club_id} onResponded={refresh} />
+      ) : activeTab === "announcements" ? (
+        <Announcements role="parent" userId={profile.id} clubId={activeTeam?.club_id} onSeen={markAnnouncementsSeen} />
       ) : activeTab === "matchday" ? (
-        <ParentMatchDaysTab teamId={activeTeamId} />
+        <ParentMatchDaysTab teamId={activeTeamId} teamName={activeTeam?.name || "Team"} />
       ) : activeTab === "plans" ? (
         <ParentTrainingPlansTab children={children.filter((c) => c.team_id === activeTeamId)} />
       ) : activeTab === "session" ? (
@@ -712,7 +796,7 @@ export default function ParentDashboard({ profile, onSignOut }) {
         <DocumentsView team={{ id: activeTeamId }} editable={false} />
       ) : (
         <div className="max-w-5xl mx-auto px-4 py-8">
-          <h1 className="font-display text-2xl tracking-wide mb-6">{teamsMap[activeTeamId]?.name}</h1>
+          <h1 className="font-display text-2xl tracking-wide mb-6">{activeTeam?.name}</h1>
           {rosterLoading ? (
             <p style={{ color: "var(--muted)" }}>Loading…</p>
           ) : (
@@ -727,4 +811,3 @@ export default function ParentDashboard({ profile, onSignOut }) {
     </div>
   );
 }
-

@@ -1,39 +1,24 @@
 import { useEffect, useState } from "react";
-import { Shield, LogOut, Plus, Users, Trash2, ArrowLeft, Upload, FileText, Palette } from "lucide-react";
+import { Plus, Users, Trash2, ArrowLeft, Upload, FileText, Camera, Eye, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
-
-function toDateString(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
+import { toDateString, fileToDataUrl, resizeImage, displayAge, statTotals, awardsForStat, AGE_GROUPS, viewStoredFile, downloadStoredFile } from "../lib/utils.js";
 import ClubCalendarTab from "./ClubCalendar.jsx";
+import Announcements from "./Announcements.jsx";
+import AppHeader from "../components/AppHeader.jsx";
 import DropdownMenu, { DropdownItem } from "../components/DropdownMenu.jsx";
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-
+// Team tile: just the name, age group and whether the team is open or full.
 function TeamCard({ team, onOpen }) {
   return (
-    <button className="glass-card flex flex-col items-center text-center p-4" onClick={() => onOpen(team)}>
+    <button className="glass-card flex flex-col items-center text-center p-5 justify-center min-h-[110px]" onClick={() => onOpen(team)}>
+      <div className="font-display text-lg truncate w-full">{team.name}</div>
+      <div className="text-sm mt-1" style={{ color: "var(--muted)" }}>{team.age_group || "No age group"}</div>
       <div
-        className="w-20 h-20 rounded-full overflow-hidden flex-shrink-0 border-2 mb-3 flex items-center justify-center"
-        style={{ borderColor: "var(--accent)", background: "rgba(255,255,255,0.04)" }}
+        className="text-xs mt-2 px-2.5 py-0.5 rounded-full font-semibold"
+        style={team.is_full ? { background: "rgba(232,67,61,0.2)", color: "#ff9a95" } : { background: "rgba(31,182,90,0.2)", color: "#6fe39a" }}
       >
-        {team.logo_url ? (
-          <img src={team.logo_url} alt={team.name} className="w-full h-full object-cover" />
-        ) : (
-          <Users className="w-8 h-8" style={{ color: "var(--muted)" }} />
-        )}
+        {team.is_full ? "Team full" : "Team open"}
       </div>
-      <div className="font-medium truncate w-full">{team.name}</div>
     </button>
   );
 }
@@ -152,18 +137,6 @@ function sortByNumber(players) {
   });
 }
 
-function statTotals(stats) {
-  const goalsTotal = stats.reduce((s, x) => s + (Number(x.goals) || 0), 0);
-  const savesTotal = stats.reduce((s, x) => s + (Number(x.saves) || 0), 0);
-  const tacklesTotal = stats.reduce((s, x) => s + (Number(x.tackles) || 0), 0);
-  const captainTotal = stats.filter((x) => x.captain).length;
-  const potmTotal = stats.filter((x) => x.potm).length;
-  const minutesPlayedTotal = stats.reduce((s, x) => s + (Number(x.minutes) || 0), 0);
-  const matchMinutesTotal = stats.reduce((s, x) => s + (Number(x.matchMinutes) || 0), 0);
-  const minutesPct = matchMinutesTotal > 0 ? Math.round((minutesPlayedTotal / matchMinutesTotal) * 100) : null;
-  return { goalsTotal, savesTotal, tacklesTotal, captainTotal, potmTotal, minutesPct };
-}
-
 function ClubPlayerCard({ player, onOpen }) {
   return (
     <button className="glass-card flex flex-col items-center text-center p-4" onClick={() => onOpen(player)}>
@@ -181,7 +154,7 @@ function ClubPlayerCard({ player, onOpen }) {
       <div className="text-xs mt-1 flex items-center justify-center gap-2" style={{ color: "var(--muted)" }}>
         <span className="font-mono">#{player.number || "—"}</span>
         <span>·</span>
-        <span>Age {player.age || "—"}</span>
+        <span>Age {displayAge(player)}</span>
       </div>
       <div className="text-xs mt-1 font-mono px-2 py-0.5 rounded-full" style={{ color: "var(--accent)", background: "rgba(46,124,246,0.12)" }}>
         {player.position}
@@ -252,7 +225,7 @@ function ClubPlayerView({ player, onBack }) {
         </div>
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Age</div>
-          <div className="text-lg mt-1">{player.age || "—"}</div>
+          <div className="text-lg mt-1">{displayAge(player)}</div>
         </div>
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Position</div>
@@ -277,6 +250,7 @@ function ClubPlayerView({ player, onBack }) {
               { label: "Tackles", value: t.tacklesTotal },
               { label: "Captain", value: t.captainTotal },
               { label: "Player of the match", value: t.potmTotal },
+              { label: "Parents' player of the match", value: t.parentsPotmTotal },
             ].map((b) => (
               <div key={b.label} className="glass-card p-4">
                 <div className="text-2xl font-mono">{b.value}</div>
@@ -298,6 +272,18 @@ function TeamDetail({ team, onBack, onDeleted, onRenamed }) {
   const [playersLoading, setPlayersLoading] = useState(true);
   const [openPlayer, setOpenPlayer] = useState(null);
   const [showInviteCoach, setShowInviteCoach] = useState(false);
+  const [ageGroup, setAgeGroup] = useState(team.age_group || "");
+
+  const saveAgeGroup = async (value) => {
+    setAgeGroup(value);
+    setError("");
+    const { error } = await supabase.from("teams").update({ age_group: value || null }).eq("id", team.id);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    onRenamed(team.id, name, value || null);
+  };
 
   useEffect(() => {
     supabase.from("players").select("*").eq("team_id", team.id).then(({ data }) => {
@@ -315,7 +301,7 @@ function TeamDetail({ team, onBack, onDeleted, onRenamed }) {
       setError(error.message);
       return;
     }
-    onRenamed(team.id, name);
+    onRenamed(team.id, name, ageGroup || null);
   };
 
   const deleteTeam = async () => {
@@ -361,6 +347,28 @@ function TeamDetail({ team, onBack, onDeleted, onRenamed }) {
           <button className="btn-accent px-4 rounded-lg" onClick={saveName} disabled={saving}>
             {saving ? "Saving…" : "Save"}
           </button>
+        </div>
+      </div>
+
+      <div className="glass-panel p-6 mb-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Age group</label>
+          <select
+            className="w-full mt-1 rounded-lg px-2.5 py-2"
+            style={{ background: "#2E4E80", color: "white", border: "1px solid rgba(255,255,255,0.14)" }}
+            value={ageGroup}
+            onChange={(e) => saveAgeGroup(e.target.value)}
+          >
+            <option value="">Not set</option>
+            {AGE_GROUPS.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+        </div>
+        <div>
+          <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Squad status</div>
+          <div className="mt-2 font-semibold" style={{ color: team.is_full ? "#ff9a95" : "#6fe39a" }}>
+            {team.is_full ? "Team full" : "Team open"}
+          </div>
+          <div className="text-xs" style={{ color: "var(--muted)" }}>Set by the coach on their Team page.</div>
         </div>
       </div>
 
@@ -469,10 +477,16 @@ function ClubDocumentsTab({ club }) {
           {docs.map((d) => (
             <div key={d.id} className="glass-card p-4 flex items-center gap-3">
               <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--gold)" }} />
-              <a href={d.file_url} download={d.file_name} className="flex-1 min-w-0">
+              <button className="flex-1 min-w-0 text-left" onClick={() => viewStoredFile(d.file_url, d.file_name)} title="Open document">
                 <div className="font-medium truncate">{d.title}</div>
                 <div className="text-xs truncate" style={{ color: "var(--muted)" }}>{d.file_name}</div>
-              </a>
+              </button>
+              <button className="opacity-70 hover:opacity-100 flex-shrink-0" onClick={() => viewStoredFile(d.file_url, d.file_name)} title="View">
+                <Eye className="w-4 h-4" />
+              </button>
+              <button className="opacity-70 hover:opacity-100 flex-shrink-0" onClick={() => downloadStoredFile(d.file_url, d.file_name)} title="Download">
+                <Download className="w-4 h-4" />
+              </button>
               <button className="opacity-50 hover:opacity-100 flex-shrink-0" onClick={() => remove(d.id)}>
                 <Trash2 className="w-4 h-4" />
               </button>
@@ -484,71 +498,89 @@ function ClubDocumentsTab({ club }) {
   );
 }
 
-const FULL_PRESET_THEMES = [
-  { name: "Matchday Navy", accent: "#2E7CF6", dark: "#123a8a", bg: "#060b16", panel: "#0f1e3d", panel2: "#16295a" },
-  { name: "Pitch Emerald", accent: "#1FB65A", dark: "#0c5c2b", bg: "#04140b", panel: "#0c2818", panel2: "#123822" },
-  { name: "Kit Crimson", accent: "#E8433D", dark: "#7c1712", bg: "#160606", panel: "#2a0e0e", panel2: "#3a1414" },
-  { name: "Amber Kit", accent: "#F2A31D", dark: "#8a5804", bg: "#160f02", panel: "#2a1e08", panel2: "#3a2a0c" },
-  { name: "Royal Purple", accent: "#8A5CF6", dark: "#3d1f8f", bg: "#0c0620", panel: "#1a1038", panel2: "#241650" },
-];
+function ClubSettingsTab({ profile, club, logo, onLogoChange }) {
+  const [name, setName] = useState(club.name || "");
+  const [savingName, setSavingName] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState("");
 
-function ThemeInjector({ theme }) {
-  if (!theme) return null;
-  return (
-    <style>{`:root{
-      --accent:${theme.accent || "#2E7CF6"};
-      --accent-dark:${theme.dark || "#123a8a"};
-      --bg-deep:${theme.bg || "#060b16"};
-      --bg-panel:${theme.panel || "#0f1e3d"};
-      --bg-panel-2:${theme.panel2 || "#16295a"};
-    }`}</style>
-  );
-}
-
-function ClubSettingsTab({ profile, club, onThemeChange }) {
-  const [draft, setDraft] = useState({
-    accent: club.theme?.accent || "#2E7CF6",
-    dark: club.theme?.dark || "#123a8a",
-    bg: club.theme?.bg || "#060b16",
-    panel: club.theme?.panel || "#0f1e3d",
-    panel2: club.theme?.panel2 || "#16295a",
-  });
-  const [saving, setSaving] = useState(false);
-
-  const applyPreset = async (preset) => {
-    const t = { accent: preset.accent, dark: preset.dark, bg: preset.bg, panel: preset.panel, panel2: preset.panel2 };
-    setDraft(t);
-    setSaving(true);
-    await supabase.from("clubs").update({ theme: t }).eq("id", club.id);
-    setSaving(false);
-    onThemeChange(t);
+  const handleEmblem = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+    setSaved("");
+    setUploading(true);
+    try {
+      // PNG keeps a transparent background; 400px is plenty for a header badge
+      const url = await resizeImage(file, 400, 0.92, "image/png");
+      const { error } = await supabase.from("clubs").update({ logo_url: url }).eq("id", club.id);
+      if (error) throw new Error(error.message);
+      onLogoChange(url);
+      setSaved("Emblem saved — it now shows on every team page.");
+    } catch (err) {
+      setError(err?.message || "Couldn't upload that image.");
+    }
+    setUploading(false);
   };
 
-  const applyCustom = async () => {
-    setSaving(true);
-    await supabase.from("clubs").update({ theme: draft }).eq("id", club.id);
-    setSaving(false);
-    onThemeChange(draft);
+  const removeEmblem = async () => {
+    setError("");
+    const { error } = await supabase.from("clubs").update({ logo_url: null }).eq("id", club.id);
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    onLogoChange(null);
+    setSaved("Emblem removed.");
   };
 
-  const field = (key, label) => (
-    <div>
-      <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>{label}</label>
-      <div className="flex items-center gap-2 mt-1">
-        <input
-          type="color"
-          value={draft[key]}
-          onChange={(e) => setDraft((d) => ({ ...d, [key]: e.target.value }))}
-          className="w-10 h-9 rounded-lg border border-white/10 bg-transparent"
-        />
-        <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>{draft[key]}</span>
-      </div>
-    </div>
-  );
+  const saveName = async () => {
+    setSavingName(true);
+    setError("");
+    const { error } = await supabase.from("clubs").update({ name }).eq("id", club.id);
+    setSavingName(false);
+    if (error) setError(error.message);
+    else {
+      club.name = name;
+      setSaved("Club name saved.");
+    }
+  };
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
       <h1 className="font-display text-2xl tracking-wide mb-6">Settings</h1>
+
+      <div className="glass-panel p-5 mb-6">
+        <h2 className="font-display text-lg mb-1">Club emblem</h2>
+        <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
+          Add your emblem once — it appears either side of the club name in the title bar, and is repeated on every team page for coaches and parents.
+        </p>
+        <div className="flex items-center gap-4 flex-wrap">
+          <div className="w-24 h-24 rounded-xl flex items-center justify-center overflow-hidden" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}>
+            {logo ? <img src={logo} alt="Club emblem" className="w-full h-full object-contain" /> : <Camera className="w-7 h-7" style={{ color: "var(--muted)" }} />}
+          </div>
+          <div className="flex flex-col gap-2">
+            <label className="btn-accent px-4 py-2 rounded-lg text-sm cursor-pointer text-center">
+              {uploading ? "Uploading…" : logo ? "Change emblem" : "Add emblem"}
+              <input type="file" accept="image/*" className="hidden" onChange={handleEmblem} disabled={uploading} />
+            </label>
+            {logo && <button className="btn-ghost px-4 py-2 rounded-lg text-sm" onClick={removeEmblem}>Remove</button>}
+          </div>
+        </div>
+        {error && <p className="text-sm mt-3" style={{ color: "#f28f8a" }}>{error}</p>}
+        {saved && <p className="text-sm mt-3" style={{ color: "#6fe39a" }}>{saved}</p>}
+      </div>
+
+      <div className="glass-panel p-5 mb-6">
+        <h2 className="font-display text-lg mb-3">Club name</h2>
+        <div className="flex gap-2">
+          <input className="input-dark flex-1" value={name} onChange={(e) => setName(e.target.value)} />
+          <button className="btn-accent px-4 rounded-lg" onClick={saveName} disabled={savingName || !name.trim()}>
+            {savingName ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
 
       <div className="glass-panel p-5 mb-6">
         <h2 className="font-display text-lg mb-3">Account</h2>
@@ -559,37 +591,17 @@ function ClubSettingsTab({ profile, club, onThemeChange }) {
       </div>
 
       <InviteClubAdmin clubId={club.id} />
-
-      <div className="glass-panel p-5">
-        <h2 className="font-display text-lg mb-1 flex items-center gap-2"><Palette className="w-4 h-4" /> Club colours</h2>
-        <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>
-          These fully re-theme the club view — background, panels, and accent — not just the highlights.
-        </p>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-          {FULL_PRESET_THEMES.map((p) => (
-            <button key={p.name} className="glass-card p-3 flex items-center gap-2 text-left" onClick={() => applyPreset(p)}>
-              <span className="w-6 h-6 rounded-full flex-shrink-0" style={{ background: `linear-gradient(180deg, ${p.accent}, ${p.dark})`, border: `2px solid ${p.panel2}` }} />
-              <span className="text-sm">{p.name}</span>
-            </button>
-          ))}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-5">
-          {field("accent", "Accent")}
-          {field("dark", "Accent (dark)")}
-          {field("bg", "Background")}
-          {field("panel", "Panel")}
-          {field("panel2", "Panel (light)")}
-        </div>
-
-        <button className="btn-accent px-4 py-2 rounded-lg text-sm" onClick={applyCustom} disabled={saving}>
-          {saving ? "Saving…" : "Apply colours"}
-        </button>
-      </div>
     </div>
   );
 }
+
+const CLUB_TABS = [
+  { id: "teams", label: "Teams" },
+  { id: "calendar", label: "Club Calendar" },
+  { id: "announcements", label: "Announcements" },
+  { id: "documents", label: "Documents" },
+  { id: "settings", label: "Settings" },
+];
 
 export default function ClubDashboard({ profile, club, onSignOut }) {
   const [teams, setTeams] = useState([]);
@@ -597,7 +609,7 @@ export default function ClubDashboard({ profile, club, onSignOut }) {
   const [openTeamId, setOpenTeamId] = useState(null);
   const [activeTab, setActiveTab] = useState("teams");
   const [error, setError] = useState("");
-  const [liveTheme, setLiveTheme] = useState(club.theme);
+  const [logo, setLogo] = useState(club.logo_url || null);
 
   const loadTeams = async () => {
     setLoading(true);
@@ -627,68 +639,59 @@ export default function ClubDashboard({ profile, club, onSignOut }) {
 
   const openTeam = teams.find((t) => t.id === openTeamId);
 
+  const header = (
+    <AppHeader
+      title={openTeam ? openTeam.name : club.name}
+      subtitle={openTeam ? [club.name, openTeam.age_group].filter(Boolean).join(" · ") : undefined}
+      logo={logo}
+      onSignOut={onSignOut}
+    />
+  );
+
   if (openTeam) {
     return (
-      <TeamDetail
-        team={openTeam}
-        onBack={() => setOpenTeamId(null)}
-        onDeleted={(id) => {
-          setTeams((t) => t.filter((x) => x.id !== id));
-          setOpenTeamId(null);
-        }}
-        onRenamed={(id, name) => {
-          setTeams((t) => t.map((x) => (x.id === id ? { ...x, name } : x)));
-        }}
-      />
+      <div className="min-h-screen">
+        {header}
+        <TeamDetail
+          key={openTeam.id}
+          team={openTeam}
+          onBack={() => setOpenTeamId(null)}
+          onDeleted={(id) => {
+            setTeams((t) => t.filter((x) => x.id !== id));
+            setOpenTeamId(null);
+          }}
+          onRenamed={(id, name, ageGroup) => {
+            setTeams((t) => t.map((x) => (x.id === id ? { ...x, name, age_group: ageGroup } : x)));
+          }}
+        />
+      </div>
     );
   }
 
   return (
     <div className="min-h-screen">
-      <ThemeInjector theme={liveTheme} />
-      <div className="flex items-center justify-between px-6 h-16" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div className="flex items-center gap-2">
-          <Shield className="w-5 h-5" style={{ color: "var(--accent)" }} />
-          <span className="font-display text-lg tracking-wide">{club.name}</span>
-        </div>
-        <button className="btn-ghost p-2 rounded-lg" onClick={onSignOut} title="Log out">
-          <LogOut className="w-4 h-4" />
-        </button>
-      </div>
+      {header}
 
-      <div className="flex gap-2 px-6 pt-4">
-        <button
-          className={activeTab === "teams" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-          onClick={() => setActiveTab("teams")}
-        >
-          Teams
-        </button>
-        <button
-          className={activeTab === "calendar" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-          onClick={() => setActiveTab("calendar")}
-        >
-          Club Calendar
-        </button>
-        <button
-          className={activeTab === "documents" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-          onClick={() => setActiveTab("documents")}
-        >
-          Documents
-        </button>
-        <button
-          className={activeTab === "settings" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-          onClick={() => setActiveTab("settings")}
-        >
-          Settings
-        </button>
+      <div className="flex flex-wrap gap-2 px-6 pt-4">
+        {CLUB_TABS.map((t) => (
+          <button
+            key={t.id}
+            className={activeTab === t.id ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
+            onClick={() => setActiveTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
       {activeTab === "calendar" ? (
-        <ClubCalendarTab teams={teams} />
+        <ClubCalendarTab teams={teams} role="club" userId={profile.id} clubId={club.id} />
+      ) : activeTab === "announcements" ? (
+        <Announcements role="club" userId={profile.id} clubId={club.id} />
       ) : activeTab === "documents" ? (
         <ClubDocumentsTab club={club} />
       ) : activeTab === "settings" ? (
-        <ClubSettingsTab profile={profile} club={club} onThemeChange={setLiveTheme} />
+        <ClubSettingsTab profile={profile} club={club} logo={logo} onLogoChange={setLogo} />
       ) : (
       <div className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="font-display text-2xl tracking-wide mb-6">Teams</h1>
@@ -721,4 +724,3 @@ export default function ClubDashboard({ profile, club, onSignOut }) {
     </div>
   );
 }
-

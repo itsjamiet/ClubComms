@@ -1,55 +1,17 @@
 import { useEffect, useState } from "react";
-import { Shield, LogOut, Plus, Users, ArrowLeft, Camera, Trash2, Circle, ArrowUpRight, Eraser, Pencil, ChevronRight } from "lucide-react";
+import { Plus, Users, ArrowLeft, Camera, Trash2, ChevronRight, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
+import { uid, toDateString, resizeImage, displayAge, calcAge, findStatIndex, awardsForStat, statTotals, AGE_GROUPS } from "../lib/utils.js";
+import AppHeader, { useClubForTeam } from "../components/AppHeader.jsx";
+import { useAlertCounts } from "../lib/notifications.js";
+import Announcements from "./Announcements.jsx";
 import MatchDayView, { buildSegments } from "./MatchDay.jsx";
 import DocumentsView from "./Documents.jsx";
-import TrainingSessionView, { Quadrant, TOOLS, defaultPitch } from "./TrainingSession.jsx";
+import TrainingSessionView, { Quadrant, TOOLS, defaultPitch, ToolPalette } from "./TrainingSession.jsx";
 import ClubCalendarTab from "./ClubCalendar.jsx";
 import DropdownMenu, { DropdownItem } from "../components/DropdownMenu.jsx";
 
 const POSITIONS = ["Any", "GK", "RB", "CB", "LB", "RM", "CM", "LM", "RW", "ST", "LW"];
-
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-
-// Resizes and compresses a photo before upload. iPhone photos are often
-// several MB (sometimes 10+ MB) and can be in HEIC format -- both can
-// cause the upload to silently fail. This shrinks the image and always
-// re-encodes it as a JPEG, which fixes both problems at once.
-function resizeImage(file, maxDimension = 800, quality = 0.85) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let { width, height } = img;
-        if (width > height && width > maxDimension) {
-          height = Math.round((height * maxDimension) / width);
-          width = maxDimension;
-        } else if (height >= width && height > maxDimension) {
-          width = Math.round((width * maxDimension) / height);
-          height = maxDimension;
-        }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.onerror = () => reject(new Error("Couldn't read that image."));
-      img.src = e.target.result;
-    };
-    reader.onerror = () => reject(new Error("Couldn't read that file."));
-    reader.readAsDataURL(file);
-  });
-}
 
 function sortByNumber(players) {
   return [...players].sort((a, b) => {
@@ -76,7 +38,7 @@ function PlayerCard({ player, onOpen }) {
       <div className="text-xs mt-1 flex items-center justify-center gap-2" style={{ color: "var(--muted)" }}>
         <span className="font-mono">#{player.number || "—"}</span>
         <span>·</span>
-        <span>Age {player.age || "—"}</span>
+        <span>Age {displayAge(player)}</span>
       </div>
       <div className="text-xs mt-1 font-mono px-2 py-0.5 rounded-full" style={{ color: "var(--accent)", background: "rgba(46,124,246,0.12)" }}>
         {player.position}
@@ -145,20 +107,6 @@ const PLAN_STATUSES = [
   { id: "mastered", label: "Mastered", color: "#1FB65A" },
 ];
 
-// Formats a Date using its LOCAL calendar day, never toISOString() (which
-// converts to UTC first and can roll the date back a day for anyone in a
-// timezone ahead of UTC, e.g. UK British Summer Time).
-function toDateString(date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
-
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
 function DrillEditor({ drill, onUpdate, onRemove }) {
   const [toolId, setToolId] = useState("blue");
   const tool = TOOLS.find((t) => t.id === toolId) || null;
@@ -177,21 +125,7 @@ function DrillEditor({ drill, onUpdate, onRemove }) {
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        {TOOLS.map((t) => (
-          <button
-            key={t.id}
-            className={`btn-ghost px-2.5 py-1.5 rounded-lg text-xs flex items-center gap-1 ${toolId === t.id ? "ring-2 ring-white" : ""}`}
-            onClick={() => setToolId(t.id)}
-          >
-            {t.kind === "dot" && <Circle className="w-3 h-3" fill={t.color} stroke={t.color} />}
-            {t.kind === "arrow" && <ArrowUpRight className="w-3 h-3" />}
-            {t.kind === "drag-arrow" && <ArrowUpRight className="w-3 h-3" strokeWidth={3} />}
-            {t.kind === "erase" && <Eraser className="w-3 h-3" />}
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <ToolPalette toolId={toolId} setToolId={setToolId} compact />
 
       <Quadrant
         index={drill.id}
@@ -378,18 +312,6 @@ function TrainingPlanEditor({ playerId }) {
   );
 }
 
-function statTotals(stats) {
-  const goalsTotal = stats.reduce((s, x) => s + (Number(x.goals) || 0), 0);
-  const savesTotal = stats.reduce((s, x) => s + (Number(x.saves) || 0), 0);
-  const tacklesTotal = stats.reduce((s, x) => s + (Number(x.tackles) || 0), 0);
-  const captainTotal = stats.filter((x) => x.captain).length;
-  const potmTotal = stats.filter((x) => x.potm).length;
-  const minutesPlayedTotal = stats.reduce((s, x) => s + (Number(x.minutes) || 0), 0);
-  const matchMinutesTotal = stats.reduce((s, x) => s + (Number(x.matchMinutes) || 0), 0);
-  const minutesPct = matchMinutesTotal > 0 ? Math.round((minutesPlayedTotal / matchMinutesTotal) * 100) : null;
-  return { goalsTotal, savesTotal, tacklesTotal, captainTotal, potmTotal, minutesPct };
-}
-
 function useAttendanceStats(teamId, playerId) {
   const [attendance, setAttendance] = useState(null);
   useEffect(() => {
@@ -433,6 +355,7 @@ function StatTotalsGrid({ stats, attendance }) {
     { label: "Tackles", value: t.tacklesTotal },
     { label: "Captain", value: t.captainTotal },
     { label: "Player of the match", value: t.potmTotal },
+    { label: "Parents' player of the match", value: t.parentsPotmTotal },
   );
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -470,7 +393,7 @@ function WeeklyStatsEditor({ playerId, teamId }) {
 
   const addWeek = () => {
     const next = [
-      { id: uid(), date: toDateString(new Date()), opponent: "", matchMinutes: 0, minutes: 0, goals: 0, tackles: 0, saves: 0, captain: false, potm: false },
+      { id: uid(), date: toDateString(new Date()), opponent: "", matchMinutes: 0, minutes: 0, goals: 0, tackles: 0, saves: 0 },
       ...stats,
     ];
     setStats(next);
@@ -541,16 +464,11 @@ function WeeklyStatsEditor({ playerId, teamId }) {
                   <input type="number" className="input-dark w-full font-mono text-sm" placeholder="0" value={s.saves || ""} onChange={(e) => updateStat(s.id, { saves: e.target.value })} />
                 </div>
               </div>
-              <div className="flex flex-col gap-2 mt-3 pt-3" style={{ borderTop: "1px solid rgba(255,255,255,0.08)" }}>
-                <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--muted)" }}>
-                  <input type="checkbox" checked={!!s.captain} onChange={(e) => updateStat(s.id, { captain: e.target.checked })} />
-                  Captain
-                </label>
-                <label className="flex items-center gap-1.5 text-xs" style={{ color: "var(--muted)" }}>
-                  <input type="checkbox" checked={!!s.potm} onChange={(e) => updateStat(s.id, { potm: e.target.checked })} />
-                  Player of the match
-                </label>
-              </div>
+              {awardsForStat(s).length > 0 && (
+                <div className="flex flex-col gap-1 mt-3 pt-3 text-sm" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", color: "var(--gold-light)" }}>
+                  {awardsForStat(s).map((a) => <div key={a}>{a}</div>)}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -569,6 +487,7 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
     name: player.name || "",
     number: player.number || "",
     age: player.age || "",
+    date_of_birth: player.date_of_birth || "",
     position: player.position || "GK",
   });
   const [photoUrl, setPhotoUrl] = useState(player.photo_url || "");
@@ -595,7 +514,12 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
     try {
       const { error } = await supabase
         .from("players")
-        .update({ ...form, photo_url: photoUrl })
+        .update({
+          ...form,
+          date_of_birth: form.date_of_birth || null,
+          age: form.date_of_birth ? String(calcAge(form.date_of_birth)) : form.age,
+          photo_url: photoUrl,
+        })
         .eq("id", player.id);
       if (error) {
         setError(error.message);
@@ -666,8 +590,14 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
           <input type="number" className="input-dark w-full mt-1 font-mono" value={form.number} onChange={(e) => setForm({ ...form, number: e.target.value })} />
         </div>
         <div className="glass-panel p-4">
-          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Age</label>
-          <input type="number" className="input-dark w-full mt-1" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} />
+          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Date of birth</label>
+          <input type="date" className="input-dark w-full mt-1" value={form.date_of_birth} onChange={(e) => setForm({ ...form, date_of_birth: e.target.value })} />
+          <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>
+            {form.date_of_birth ? `Age ${calcAge(form.date_of_birth) ?? "—"}` : "Age:"}
+            {!form.date_of_birth && (
+              <input type="number" className="input-dark ml-2 w-16 py-0.5" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} />
+            )}
+          </div>
         </div>
         <div className="glass-panel p-4">
           <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Position</label>
@@ -696,6 +626,7 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
 }
 
 function TeamRoster({ team, onOpenPlayer }) {
+  const [isFull, setIsFull] = useState(!!team.is_full);
   const [players, setPlayers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -729,6 +660,17 @@ function TeamRoster({ team, onOpenPlayer }) {
 
   const sorted = sortByNumber(players);
 
+  const toggleFull = async () => {
+    const next = !isFull;
+    setIsFull(next);
+    setError("");
+    const { error } = await supabase.from("teams").update({ is_full: next }).eq("id", team.id);
+    if (error) {
+      setIsFull(!next);
+      setError(error.message);
+    }
+  };
+
   return (
     <div className="max-w-5xl mx-auto px-4 py-8 relative">
       <h1 className="font-display text-2xl tracking-wide mb-6">{team.name}</h1>
@@ -748,6 +690,19 @@ function TeamRoster({ team, onOpenPlayer }) {
           ))}
         </div>
       )}
+
+      <div className="mt-8 flex justify-center">
+        <button
+          className={`${isFull ? "btn-accent" : "btn-ghost"} px-6 py-2.5 rounded-lg text-sm font-semibold`}
+          onClick={toggleFull}
+          aria-pressed={isFull}
+        >
+          {isFull ? "Team full ✓" : "Team full"}
+        </button>
+      </div>
+      <p className="text-xs text-center mt-2" style={{ color: "var(--muted)" }}>
+        {isFull ? "Your club sees this team as full." : "Highlight this when the squad is full — your club will see it."}
+      </p>
 
       <button
         className="fixed bottom-8 right-8 w-14 h-14 rounded-full btn-accent flex items-center justify-center"
@@ -911,10 +866,10 @@ function EventForm({ teamId, onCreated, onCancel }) {
     ? generateRecurringDates(form.date, form.recurrence)
     : null;
 
-  const populateWeeklyStats = async (matchDate, opponent) => {
+  const populateWeeklyStats = async (matchDate, opponent, eventId) => {
     const { data: teamPlayers } = await supabase.from("players").select("id, stats").eq("team_id", teamId);
     await Promise.all((teamPlayers || []).map((p) => {
-      const newEntry = { id: uid(), date: matchDate, opponent: opponent || "", matchMinutes: 0, minutes: 0, goals: 0, tackles: 0, saves: 0, captain: false, potm: false };
+      const newEntry = { id: uid(), eventId, date: matchDate, opponent: opponent || "", matchMinutes: 0, minutes: 0, goals: 0, tackles: 0, saves: 0 };
       const nextStats = [newEntry, ...(p.stats || [])];
       return supabase.from("players").update({ stats: nextStats }).eq("id", p.id);
     }));
@@ -940,8 +895,8 @@ function EventForm({ teamId, onCreated, onCancel }) {
     }
 
     if (form.type === "match") {
-      await populateWeeklyStats(form.date, form.opponent);
       const newEvent = data[0];
+      await populateWeeklyStats(form.date, form.opponent, newEvent?.id);
       if (newEvent) {
         await supabase.from("matchdays").insert({
           event_id: newEvent.id,
@@ -1417,10 +1372,12 @@ function MatchDaysTab({ team }) {
       .order("date", { ascending: false });
     const eventIds = (events || []).map((e) => e.id);
     const { data: mds } = eventIds.length
-      ? await supabase.from("matchdays").select("id, event_id").in("event_id", eventIds)
+      ? await supabase.from("matchdays").select("id, event_id, awards").in("event_id", eventIds)
       : { data: [] };
-    const mdByEvent = Object.fromEntries((mds || []).map((m) => [m.event_id, m.id]));
-    setMatches((events || []).map((e) => ({ ...e, matchdayId: mdByEvent[e.id] || null })));
+    const { data: pls } = await supabase.from("players").select("id, name").eq("team_id", team.id);
+    const nameById = Object.fromEntries((pls || []).map((p) => [p.id, p.name]));
+    const mdByEvent = Object.fromEntries((mds || []).map((m) => [m.event_id, m]));
+    setMatches((events || []).map((e) => ({ ...e, matchdayId: mdByEvent[e.id]?.id || null, awards: mdByEvent[e.id]?.awards || {}, nameById })));
     setLoading(false);
   };
 
@@ -1453,7 +1410,7 @@ function MatchDaysTab({ team }) {
             <ArrowLeft className="w-3.5 h-3.5" /> Back to match days
           </button>
         </div>
-        <MatchDayView matchdayId={openMatchdayId} teamId={team.id} editable={true} />
+        <MatchDayView matchdayId={openMatchdayId} teamId={team.id} teamName={team.name} editable={true} />
       </div>
     );
   }
@@ -1484,6 +1441,13 @@ function MatchDaysTab({ team }) {
                 <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
                   {m.date}{m.time ? ` · ${m.time}` : ""}{m.location ? ` · ${m.location}` : ""}
                 </div>
+                {(m.awards?.captain || m.awards?.potm || m.awards?.parentsPotm) && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {m.awards.captain && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>Captain: {m.nameById[m.awards.captain] || "—"}</span>}
+                    {m.awards.potm && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.18)", color: "#f1d97a" }}>POTM: {m.nameById[m.awards.potm] || "—"}</span>}
+                    {m.awards.parentsPotm && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.18)", color: "#f1d97a" }}>Parents' POTM: {m.nameById[m.awards.parentsPotm] || "—"}</span>}
+                  </div>
+                )}
               </div>
               <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--muted)" }} />
             </button>
@@ -1543,6 +1507,17 @@ function TrainingPlansTab({ team }) {
   );
 }
 
+const COACH_TABS = [
+  { id: "team", label: "Team" },
+  { id: "calendar", label: "Calendar" },
+  { id: "clubCalendar", label: "Club Calendar" },
+  { id: "announcements", label: "Announcements" },
+  { id: "matchday", label: "Match Day" },
+  { id: "plans", label: "Training Plans" },
+  { id: "session", label: "Training Session" },
+  { id: "documents", label: "Documents" },
+];
+
 export default function CoachTeamPage({ profile, onSignOut }) {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1550,11 +1525,12 @@ export default function CoachTeamPage({ profile, onSignOut }) {
   const [activeTab, setActiveTab] = useState("team");
   const [openPlayer, setOpenPlayer] = useState(null);
   const [reloadRoster, setReloadRoster] = useState(null);
+  const { counts, refresh, markAnnouncementsSeen } = useAlertCounts(profile.id);
 
   useEffect(() => {
     supabase
       .from("coach_team_links")
-      .select("teams(id, name, logo_url)")
+      .select("teams(id, name, logo_url, club_id, age_group, is_full)")
       .eq("coach_id", profile.id)
       .then(({ data }) => {
         const list = (data || []).map((r) => r.teams).filter(Boolean);
@@ -1565,17 +1541,15 @@ export default function CoachTeamPage({ profile, onSignOut }) {
   }, [profile]);
 
   const activeTeam = teams.find((t) => t.id === activeTeamId);
+  const club = useClubForTeam(activeTeamId);
 
   const [clubTeams, setClubTeams] = useState([]);
   useEffect(() => {
-    if (!activeTeamId) return;
-    supabase.from("teams").select("club_id").eq("id", activeTeamId).single().then(({ data }) => {
-      if (!data?.club_id) return;
-      supabase.from("teams").select("id, name, logo_url").eq("club_id", data.club_id).then(({ data: ct }) => {
-        setClubTeams(ct || []);
-      });
+    if (!activeTeam?.club_id) return;
+    supabase.from("teams").select("id, name, logo_url, club_id").eq("club_id", activeTeam.club_id).then(({ data: ct }) => {
+      setClubTeams(ct || []);
     });
-  }, [activeTeamId]);
+  }, [activeTeam?.club_id]);
 
   const handleOpenPlayer = (player, reload) => {
     setOpenPlayer(player);
@@ -1585,6 +1559,11 @@ export default function CoachTeamPage({ profile, onSignOut }) {
   const closePlayer = () => {
     setOpenPlayer(null);
     if (reloadRoster) reloadRoster();
+  };
+
+  const goTab = (id) => {
+    setActiveTab(id);
+    refresh();
   };
 
   if (loading) {
@@ -1606,73 +1585,41 @@ export default function CoachTeamPage({ profile, onSignOut }) {
     );
   }
 
+  const badgeFor = (id) => (id === "announcements" ? counts.announcements : id === "clubCalendar" ? counts.events : 0);
+
   return (
     <div className="min-h-screen">
-      <div className="flex items-center justify-between px-6 h-16" style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
-        <div className="flex items-center gap-3">
-          <Shield className="w-5 h-5" style={{ color: "var(--accent)" }} />
-          {teams.length > 1 ? (
+      <AppHeader
+        title={activeTeam?.name}
+        subtitle={[club?.name, activeTeam?.age_group].filter(Boolean).join(" · ")}
+        logo={club?.logo_url}
+        onSignOut={onSignOut}
+        left={
+          teams.length > 1 ? (
             <select
-              className="text-sm py-1.5 px-2 rounded-lg"
+              className="text-sm py-1.5 px-2 rounded-lg max-w-[140px]"
               style={{ background: "#2E4E80", color: "white", border: "1px solid rgba(255,255,255,0.14)" }}
               value={activeTeamId}
               onChange={(e) => setActiveTeamId(e.target.value)}
             >
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
             </select>
-          ) : (
-            <span className="font-display text-lg tracking-wide">{activeTeam?.name}</span>
-          )}
-        </div>
-        <button className="btn-ghost p-2 rounded-lg" onClick={onSignOut} title="Log out">
-          <LogOut className="w-4 h-4" />
-        </button>
-      </div>
+          ) : null
+        }
+      />
 
       {!openPlayer && (
-        <div className="flex gap-2 px-6 pt-4">
-          <button
-            className={activeTab === "team" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("team")}
-          >
-            Team
-          </button>
-          <button
-            className={activeTab === "calendar" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("calendar")}
-          >
-            Calendar
-          </button>
-          <button
-            className={activeTab === "clubCalendar" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("clubCalendar")}
-          >
-            Club Calendar
-          </button>
-          <button
-            className={activeTab === "matchday" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("matchday")}
-          >
-            Match Day
-          </button>
-          <button
-            className={activeTab === "plans" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("plans")}
-          >
-            Training Plans
-          </button>
-          <button
-            className={activeTab === "session" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("session")}
-          >
-            Training Session
-          </button>
-          <button
-            className={activeTab === "documents" ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
-            onClick={() => setActiveTab("documents")}
-          >
-            Documents
-          </button>
+        <div className="flex flex-wrap gap-2 px-6 pt-4">
+          {COACH_TABS.map((t) => (
+            <button
+              key={t.id}
+              className={activeTab === t.id ? "btn-accent px-3 py-1.5 rounded-lg text-sm" : "btn-ghost px-3 py-1.5 rounded-lg text-sm"}
+              onClick={() => goTab(t.id)}
+            >
+              {t.label}
+              {badgeFor(t.id) > 0 && <span className="tab-badge">{badgeFor(t.id)}</span>}
+            </button>
+          ))}
         </div>
       )}
 
@@ -1686,7 +1633,9 @@ export default function CoachTeamPage({ profile, onSignOut }) {
       ) : activeTab === "calendar" ? (
         activeTeam && <TeamCalendar team={activeTeam} editable={true} />
       ) : activeTab === "clubCalendar" ? (
-        <ClubCalendarTab teams={clubTeams} />
+        <ClubCalendarTab teams={clubTeams} role="coach" userId={profile.id} clubId={activeTeam?.club_id} onResponded={refresh} />
+      ) : activeTab === "announcements" ? (
+        <Announcements role="coach" userId={profile.id} clubId={activeTeam?.club_id} onSeen={markAnnouncementsSeen} />
       ) : activeTab === "matchday" ? (
         activeTeam && <MatchDaysTab team={activeTeam} />
       ) : activeTab === "plans" ? (
@@ -1696,9 +1645,8 @@ export default function CoachTeamPage({ profile, onSignOut }) {
       ) : activeTab === "documents" ? (
         activeTeam && <DocumentsView team={activeTeam} editable={true} />
       ) : (
-        activeTeam && <TeamRoster team={activeTeam} onOpenPlayer={handleOpenPlayer} />
+        activeTeam && <TeamRoster key={activeTeam.id} team={activeTeam} onOpenPlayer={handleOpenPlayer} />
       )}
     </div>
   );
 }
-

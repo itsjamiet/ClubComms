@@ -1,15 +1,7 @@
 import { useEffect, useState } from "react";
-import { Upload, FileText, Trash2 } from "lucide-react";
+import { Upload, FileText, Trash2, Eye, Download } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
-
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = () => resolve(r.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
+import { fileToDataUrl, viewStoredFile, downloadStoredFile } from "../lib/utils.js";
 
 export default function DocumentsView({ team, editable }) {
   const [clubDocs, setClubDocs] = useState([]);
@@ -97,10 +89,16 @@ export default function DocumentsView({ team, editable }) {
                 {clubDocs.map((d) => (
                   <div key={d.id} className="glass-card p-4 flex items-center gap-3">
                     <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--gold)" }} />
-                    <a href={d.file_url} download={d.file_name} className="flex-1 min-w-0">
+                    <button className="flex-1 min-w-0 text-left" onClick={() => viewStoredFile(d.file_url, d.file_name)} title="Open document">
                       <div className="font-medium truncate">{d.title}</div>
                       <div className="text-xs truncate" style={{ color: "var(--muted)" }}>{d.file_name}</div>
-                    </a>
+                    </button>
+                    <button className="opacity-70 hover:opacity-100 flex-shrink-0" onClick={() => viewStoredFile(d.file_url, d.file_name)} title="View">
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button className="opacity-70 hover:opacity-100 flex-shrink-0" onClick={() => downloadStoredFile(d.file_url, d.file_name)} title="Download">
+                      <Download className="w-4 h-4" />
+                    </button>
                     <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0" style={{ background: "rgba(212,175,55,0.15)", color: "var(--gold-light)" }}>Club</span>
                   </div>
                 ))}
@@ -116,10 +114,16 @@ export default function DocumentsView({ team, editable }) {
                 {teamDocs.map((d) => (
                   <div key={d.id} className="glass-card p-4 flex items-center gap-3">
                     <FileText className="w-5 h-5 flex-shrink-0" style={{ color: "var(--accent)" }} />
-                    <a href={d.file_url} download={d.file_name} className="flex-1 min-w-0">
+                    <button className="flex-1 min-w-0 text-left" onClick={() => viewStoredFile(d.file_url, d.file_name)} title="Open document">
                       <div className="font-medium truncate">{d.title}</div>
                       <div className="text-xs truncate" style={{ color: "var(--muted)" }}>{d.file_name}</div>
-                    </a>
+                    </button>
+                    <button className="opacity-70 hover:opacity-100 flex-shrink-0" onClick={() => viewStoredFile(d.file_url, d.file_name)} title="View">
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button className="opacity-70 hover:opacity-100 flex-shrink-0" onClick={() => downloadStoredFile(d.file_url, d.file_name)} title="Download">
+                      <Download className="w-4 h-4" />
+                    </button>
                     {editable && (
                       <button className="opacity-50 hover:opacity-100 flex-shrink-0" onClick={() => remove(d.id)}>
                         <Trash2 className="w-4 h-4" />
