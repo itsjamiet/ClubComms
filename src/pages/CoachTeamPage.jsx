@@ -11,8 +11,6 @@ import TrainingSessionView, { Quadrant, TOOLS, defaultPitch, ToolPalette } from 
 import ClubCalendarTab from "./ClubCalendar.jsx";
 import DropdownMenu, { DropdownItem } from "../components/DropdownMenu.jsx";
 
-const POSITIONS = ["Any", "GK", "RB", "CB", "LB", "RM", "CM", "LM", "RW", "ST", "LW"];
-
 function sortByNumber(players) {
   return [...players].sort((a, b) => {
     const na = a.number === "" || a.number === null || a.number === undefined ? Infinity : Number(a.number);
@@ -39,9 +37,6 @@ function PlayerCard({ player, onOpen }) {
         <span className="font-mono">#{player.number || "—"}</span>
         <span>·</span>
         <span>Age {displayAge(player)}</span>
-      </div>
-      <div className="text-xs mt-1 font-mono px-2 py-0.5 rounded-full" style={{ color: "var(--accent)", background: "rgba(46,124,246,0.12)" }}>
-        {player.position}
       </div>
     </button>
   );
@@ -488,7 +483,6 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
     number: player.number || "",
     age: player.age || "",
     date_of_birth: player.date_of_birth || "",
-    position: player.position || "GK",
   });
   const [photoUrl, setPhotoUrl] = useState(player.photo_url || "");
   const [photoError, setPhotoError] = useState("");
@@ -580,7 +574,7 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
         {photoError && <p className="text-sm mt-2" style={{ color: "#f28f8a" }}>{photoError}</p>}
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="glass-panel p-4">
           <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Name</label>
           <input className="input-dark w-full mt-1" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -598,17 +592,6 @@ function PlayerDetail({ player, onBack, onSaved, onDeleted }) {
               <input type="number" className="input-dark ml-2 w-16 py-0.5" value={form.age} onChange={(e) => setForm({ ...form, age: e.target.value })} />
             )}
           </div>
-        </div>
-        <div className="glass-panel p-4">
-          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Position</label>
-          <select
-            className="w-full mt-1 rounded-lg px-2.5 py-2"
-            style={{ background: "#2E4E80", color: "white", border: "1px solid rgba(255,255,255,0.14)" }}
-            value={form.position}
-            onChange={(e) => setForm({ ...form, position: e.target.value })}
-          >
-            {POSITIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
         </div>
       </div>
 
@@ -647,7 +630,7 @@ function TeamRoster({ team, onOpenPlayer }) {
     setError("");
     const { data, error } = await supabase
       .from("players")
-      .insert({ team_id: team.id, name: "New Player", position: "Any" })
+      .insert({ team_id: team.id, name: "New Player" })
       .select()
       .single();
     if (error) {
@@ -1593,6 +1576,7 @@ export default function CoachTeamPage({ profile, onSignOut }) {
         title={activeTeam?.name}
         subtitle={[club?.name, activeTeam?.age_group].filter(Boolean).join(" · ")}
         logo={club?.logo_url}
+        shape={club?.shape}
         onSignOut={onSignOut}
         left={
           teams.length > 1 ? (

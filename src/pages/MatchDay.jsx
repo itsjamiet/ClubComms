@@ -11,13 +11,6 @@ const BREAKDOWN_LABELS = {
   quarters: ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"],
   halves: ["1st Half", "2nd Half"],
 };
-const POSITION_GROUP = {
-  GK: "gk",
-  RB: "def", CB: "def", LB: "def",
-  RM: "mid", CM: "mid", LM: "mid",
-  RW: "atk", ST: "atk", LW: "atk",
-};
-
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -35,31 +28,41 @@ export function buildSegments(breakdown) {
   return Array.from({ length: count }).map((_, i) => ({ id: uid(), label: labels[i], playerIds: [], positions: {}, notes: "", goals: {} }));
 }
 
-function autoLayoutPositions(selectedIds, players) {
-  const byId = Object.fromEntries(players.map((p) => [p.id, p]));
-  const ordered = selectedIds.map((id) => byId[id]).filter(Boolean);
+// Positions are decided purely by the ORDER players are picked:
+//   1st = defence, 2nd = left midfield, 3rd = right midfield, 4th = striker,
+//   then every extra player is added to defence, midfield, attack in turn
+//   (so 7v7 / 9v9 simply fill each line out).
+const LINE_X = { def: 24, mid: 52, atk: 78 };
 
-  let gk = ordered.find((p) => POSITION_GROUP[p.position] === "gk");
-  if (!gk && ordered.length) gk = ordered[0];
+function roleForIndex(n) {
+  if (n === 0) return "def";
+  if (n === 1) return "lm";
+  if (n === 2) return "rm";
+  if (n === 3) return "atk";
+  return ["def", "mid", "atk"][(n - 4) % 3];
+}
 
-  const rest = ordered.filter((p) => p.id !== gk?.id);
+function autoLayoutPositions(selectedIds) {
   const lines = { def: [], mid: [], atk: [] };
-  rest.forEach((p) => {
-    const group = POSITION_GROUP[p.position] === "gk" ? "def" : POSITION_GROUP[p.position] || "mid";
-    lines[group].push(p);
+  const lm = [];
+  const rm = [];
+  const midExtras = [];
+  selectedIds.forEach((id, i) => {
+    const role = roleForIndex(i);
+    if (role === "def") lines.def.push(id);
+    else if (role === "atk") lines.atk.push(id);
+    else if (role === "lm") lm.push(id);
+    else if (role === "rm") rm.push(id);
+    else midExtras.push(id);
   });
+  lines.mid = [...lm, ...midExtras, ...rm];
 
   const positions = {};
-  if (gk) positions[gk.id] = { x: 8, y: 33 };
-
-  const lineX = { def: 28, mid: 52, atk: 76 };
   Object.entries(lines).forEach(([group, arr]) => {
-    const spacing = 58 / (arr.length + 1);
-    arr.forEach((p, i) => {
-      positions[p.id] = { x: lineX[group], y: 8 + spacing * (i + 1) };
+    arr.forEach((id, i) => {
+      positions[id] = { x: LINE_X[group], y: (66 * (i + 1)) / (arr.length + 1) };
     });
   });
-
   return positions;
 }
 
@@ -102,10 +105,12 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
           background: "repeating-linear-gradient(90deg, rgba(255,255,255,0.045) 0 40px, rgba(0,0,0,0.02) 40px 80px), linear-gradient(180deg, #168a3f, #136b34)",
           border: "2px solid rgba(255,255,255,0.35)",
           borderRadius: 6,
+          touchAction: editable ? "none" : "auto",
         }}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerLeave={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         <rect x="1" y="1" width="98" height="64" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" />
         <line x1="50" y1="1" x2="50" y2="65" stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" />
@@ -118,13 +123,15 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
           return (
             <g
               key={p.id}
-              style={{ cursor: editable ? "grab" : "default" }}
+              style={{ cursor: editable ? (dragId === p.id ? "grabbing" : "grab") : "default", touchAction: "none" }}
               onPointerDown={(e) => {
                 if (!editable) return;
+                e.preventDefault();
                 e.currentTarget.setPointerCapture?.(e.pointerId);
                 setDragId(p.id);
               }}
             >
+              <circle cx={pos.x} cy={pos.y} r="7" fill="transparent" />
               <text x={pos.x} y={pos.y - 3.5} textAnchor="middle" fontSize="3.2" fill="white" fontWeight="700">{shortLabel(p.name)}</text>
               <circle cx={pos.x} cy={pos.y} r="3.4" fill="#2E7CF6" stroke="white" strokeWidth="0.5" />
             </g>
@@ -152,7 +159,7 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
                 onClick={() => onToggleSelection(segment.id, p.id)}
               >
                 <span className="text-sm flex-1">{p.name || "Unnamed"}</span>
-                <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>#{p.number || "—"} · {p.position}</span>
+                <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>#{p.number || "—"}</span>
               </button>
             );
           })}
@@ -427,7 +434,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
     persist({ ...matchday, breakdown, segments: buildSegments(breakdown) });
   };
   const setFormat = (format) => {
-    persist({ ...matchday, format, segments: matchday.segments.map((s) => ({ ...s, playerIds: [], positions: {} })) });
+    persist({ ...matchday, format, segments: matchday.segments.map((s) => ({ ...s, playerIds: [], positions: {}, moved: false })) });
   };
 
   const toggleSelection = (segmentId, playerId) => {
@@ -441,14 +448,24 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
         if (s.playerIds.length >= formatSize) return s;
         playerIds = [...s.playerIds, playerId];
       }
-      return { ...s, playerIds, positions: autoLayoutPositions(playerIds, players) };
+      const computed = autoLayoutPositions(playerIds);
+      let positions;
+      if (!s.moved) {
+        positions = computed; // nothing dragged yet: re-tidy the whole line-up
+      } else if (already) {
+        positions = { ...s.positions };
+        delete positions[playerId];
+      } else {
+        positions = { ...s.positions, [playerId]: computed[playerId] }; // keep coach's manual spots
+      }
+      return { ...s, playerIds, positions };
     });
     persist({ ...matchday, segments });
   };
 
   const movePlayer = (segmentId, playerId, pos) => {
     const segments = matchday.segments.map((s) =>
-      s.id !== segmentId ? s : { ...s, positions: { ...s.positions, [playerId]: pos } }
+      s.id !== segmentId ? s : { ...s, moved: true, positions: { ...s.positions, [playerId]: pos } }
     );
     persist({ ...matchday, segments });
   };
@@ -474,6 +491,8 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
       teamName,
       clubName: club?.name,
       clubLogo: club?.logo_url,
+      emblemShape: club?.shape,
+      variant: club?.gazetteStyle,
       headline,
       body,
       date: event?.date,
@@ -607,7 +626,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
                 <label key={p.id} className="flex items-center gap-2 p-1.5 rounded-lg cursor-pointer">
                   <input type="checkbox" checked={squadIds.includes(p.id)} onChange={() => toggleSquad(p.id)} />
                   <span className="text-sm flex-1">{p.name || "Unnamed"}</span>
-                  <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>#{p.number || "—"} · {p.position}</span>
+                  <span className="text-xs font-mono" style={{ color: "var(--muted)" }}>#{p.number || "—"}</span>
                 </label>
               ))}
             </div>
@@ -655,7 +674,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
                   }}
                 >
                   <span className="font-mono" style={{ color: "var(--accent)" }}>#{p.number || "—"}</span>
-                  {p.name || "Unnamed"} <span style={{ color: "var(--muted)" }}>· {p.position}</span>
+                  {p.name || "Unnamed"}
                   {held.map((a) => (
                     <span key={a.key} className="px-1.5 rounded-full font-bold" style={{ background: "#d4af37", color: "#0b1223" }} title={a.label}>{a.short}</span>
                   ))}

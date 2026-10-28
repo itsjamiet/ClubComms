@@ -9,7 +9,7 @@ import { GazetteView } from "./MatchDay.jsx";
 import { buildGazetteHtml } from "../lib/gazette.js";
 
 import DocumentsView from "./Documents.jsx";
-import TrainingSessionView, { Quadrant } from "./TrainingSession.jsx";
+import { Quadrant } from "./TrainingSession.jsx";
 import ClubCalendarTab from "./ClubCalendar.jsx";
 
 const PLAN_STATUSES = [
@@ -44,9 +44,6 @@ function PlayerCard({ player, onOpen }) {
         <span className="font-mono">#{player.number || "—"}</span>
         <span>·</span>
         <span>Age {displayAge(player)}</span>
-      </div>
-      <div className="text-xs mt-1 font-mono px-2 py-0.5 rounded-full" style={{ color: "var(--accent)", background: "rgba(46,124,246,0.12)" }}>
-        {player.position}
       </div>
     </button>
   );
@@ -265,7 +262,7 @@ function PlayerView({ player, isOwnChild, onBack, onUpdated }) {
               <div className="text-xs mt-1" style={{ color: "var(--muted)" }}>{dob ? `Age ${calcAge(dob) ?? "—"}` : "Adds their age to the team page"}</div>
             </div>
           </div>
-          <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>Shirt number and position are set by your coach.</p>
+          <p className="text-xs mt-3" style={{ color: "var(--muted)" }}>Shirt number is set by your coach.</p>
           {error && <p className="text-sm mt-2" style={{ color: "#f28f8a" }}>{error}</p>}
           <div className="flex items-center gap-3 mt-3">
             <button className="btn-accent px-5 py-2 rounded-lg" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save"}</button>
@@ -274,7 +271,7 @@ function PlayerView({ player, isOwnChild, onBack, onUpdated }) {
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Name</div>
           <div className="font-display text-lg mt-1">{(isOwnChild ? name : player.name) || "—"}</div>
@@ -286,10 +283,6 @@ function PlayerView({ player, isOwnChild, onBack, onUpdated }) {
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Age</div>
           <div className="text-lg mt-1">{shownAge}</div>
-        </div>
-        <div className="glass-panel p-4">
-          <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Position</div>
-          <div className="text-lg mt-1">{player.position}</div>
         </div>
       </div>
 
@@ -578,6 +571,8 @@ function ParentMatchDaysTab({ teamId, teamName }) {
           teamName,
           clubName: club?.name,
           clubLogo: club?.logo_url,
+          emblemShape: club?.shape,
+          variant: club?.gazetteStyle,
           headline: open.report.headline,
           body: open.report.body,
           date: open.date,
@@ -647,7 +642,6 @@ const PARENT_TABS = [
   { id: "announcements", label: "Announcements" },
   { id: "matchday", label: "Match Day" },
   { id: "plans", label: "Training Plans" },
-  { id: "session", label: "Training Session" },
   { id: "documents", label: "Documents" },
 ];
 
@@ -742,6 +736,7 @@ export default function ParentDashboard({ profile, onSignOut }) {
         title={activeTeam?.name}
         subtitle={[club?.name, activeTeam?.age_group].filter(Boolean).join(" · ")}
         logo={club?.logo_url}
+        shape={club?.shape}
         onSignOut={onSignOut}
         left={
           teamOptions.length > 1 ? (
@@ -790,8 +785,6 @@ export default function ParentDashboard({ profile, onSignOut }) {
         <ParentMatchDaysTab teamId={activeTeamId} teamName={activeTeam?.name || "Team"} />
       ) : activeTab === "plans" ? (
         <ParentTrainingPlansTab children={children.filter((c) => c.team_id === activeTeamId)} />
-      ) : activeTab === "session" ? (
-        <TrainingSessionView team={{ id: activeTeamId }} editable={false} />
       ) : activeTab === "documents" ? (
         <DocumentsView team={{ id: activeTeamId }} editable={false} />
       ) : (

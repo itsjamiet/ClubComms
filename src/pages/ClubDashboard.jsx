@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabaseClient.js";
 import { toDateString, fileToDataUrl, resizeImage, displayAge, statTotals, awardsForStat, AGE_GROUPS, viewStoredFile, downloadStoredFile } from "../lib/utils.js";
 import ClubCalendarTab from "./ClubCalendar.jsx";
 import Announcements from "./Announcements.jsx";
+import { buildGazetteHtml, GAZETTE_STYLES, GAZETTE_WIDTH } from "../lib/gazette.js";
 import AppHeader from "../components/AppHeader.jsx";
 import DropdownMenu, { DropdownItem } from "../components/DropdownMenu.jsx";
 
@@ -156,9 +157,6 @@ function ClubPlayerCard({ player, onOpen }) {
         <span>·</span>
         <span>Age {displayAge(player)}</span>
       </div>
-      <div className="text-xs mt-1 font-mono px-2 py-0.5 rounded-full" style={{ color: "var(--accent)", background: "rgba(46,124,246,0.12)" }}>
-        {player.position}
-      </div>
     </button>
   );
 }
@@ -214,7 +212,7 @@ function ClubPlayerView({ player, onBack }) {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Name</div>
           <div className="font-display text-lg mt-1">{player.name || "—"}</div>
@@ -226,10 +224,6 @@ function ClubPlayerView({ player, onBack }) {
         <div className="glass-panel p-4">
           <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Age</div>
           <div className="text-lg mt-1">{displayAge(player)}</div>
-        </div>
-        <div className="glass-panel p-4">
-          <div className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Position</div>
-          <div className="text-lg mt-1">{player.position}</div>
         </div>
       </div>
 
@@ -498,7 +492,30 @@ function ClubDocumentsTab({ club }) {
   );
 }
 
-function ClubSettingsTab({ profile, club, logo, onLogoChange }) {
+function GazettePreview({ logo, shape, variant, clubName }) {
+  const html = buildGazetteHtml({
+    teamName: "Under 9s", clubName: clubName || "Your Club", clubLogo: logo, emblemShape: shape, variant,
+    headline: "Late winner seals a thriller", body: "A brilliant team effort saw the lads come from behind to win. Every player worked hard and the supporters loved it.",
+    date: new Date().toISOString().slice(0, 10), opponent: "Rivals FC", ourScore: 3, theirScore: 2,
+  });
+  const z = 0.27;
+  return (
+    <div style={{ width: GAZETTE_WIDTH * z, height: 330, overflow: "hidden", borderRadius: 8, background: "#fff" }}>
+      <div style={{ zoom: z, width: GAZETTE_WIDTH }} dangerouslySetInnerHTML={{ __html: html }} />
+    </div>
+  );
+}
+
+function ClubSettingsTab({ profile, club, logo, onLogoChange, theme, onThemeChange }) {
+  const shape = theme?.emblem_shape === "round" ? "round" : "square";
+  const gStyle = theme?.gazette_style || "clean";
+  const saveTheme = async (patch) => {
+    const next = { ...(theme || {}), ...patch };
+    onThemeChange(next);
+    const { error } = await supabase.from("clubs").update({ theme: next }).eq("id", club.id);
+    if (error) setError(error.message);
+    else setSaved("Saved.");
+  };
   const [name, setName] = useState(club.name || "");
   const [savingName, setSavingName] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -558,7 +575,7 @@ function ClubSettingsTab({ profile, club, logo, onLogoChange }) {
         </p>
         <div className="flex items-center gap-4 flex-wrap">
           <div className="w-24 h-24 rounded-xl flex items-center justify-center overflow-hidden" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.12)" }}>
-            {logo ? <img src={logo} alt="Club emblem" className="w-full h-full object-contain" /> : <Camera className="w-7 h-7" style={{ color: "var(--muted)" }} />}
+            {logo ? <img src={logo} alt="Club emblem" className="w-full h-full" style={{ objectFit: shape === "round" ? "cover" : "contain", borderRadius: shape === "round" ? "50%" : 0 }} /> : <Camera className="w-7 h-7" style={{ color: "var(--muted)" }} />}
           </div>
           <div className="flex flex-col gap-2">
             <label className="btn-accent px-4 py-2 rounded-lg text-sm cursor-pointer text-center">
@@ -568,8 +585,34 @@ function ClubSettingsTab({ profile, club, logo, onLogoChange }) {
             {logo && <button className="btn-ghost px-4 py-2 rounded-lg text-sm" onClick={removeEmblem}>Remove</button>}
           </div>
         </div>
+        <div className="mt-4">
+          <div className="text-sm mb-2">Emblem shape</div>
+          <div className="flex gap-2">
+            {["square", "round"].map((s) => (
+              <button key={s} onClick={() => saveTheme({ emblem_shape: s })}
+                className={shape === s ? "btn-accent px-4 py-2 rounded-lg text-sm" : "btn-ghost px-4 py-2 rounded-lg text-sm"}>
+                {s === "square" ? "Square" : "Round"}
+              </button>
+            ))}
+          </div>
+        </div>
         {error && <p className="text-sm mt-3" style={{ color: "#f28f8a" }}>{error}</p>}
         {saved && <p className="text-sm mt-3" style={{ color: "#6fe39a" }}>{saved}</p>}
+      </div>
+
+      <div className="glass-panel p-5 mb-6">
+        <h2 className="font-display text-lg mb-1">Match report style</h2>
+        <p className="text-sm mb-4" style={{ color: "var(--muted)" }}>Choose the look of the newspaper-style match report for all your teams.</p>
+        <div className="flex gap-4 flex-wrap">
+          {GAZETTE_STYLES.map((g) => (
+            <button key={g.id} onClick={() => saveTheme({ gazette_style: g.id })} className="text-left"
+              style={{ padding: 8, borderRadius: 12, border: gStyle === g.id ? "2px solid var(--accent)" : "2px solid rgba(255,255,255,0.12)", background: "rgba(0,0,0,0.28)" }}>
+              <GazettePreview logo={logo} shape={shape} variant={g.id} clubName={club.name} />
+              <div className="mt-2 text-sm font-medium">{g.label}{gStyle === g.id ? " ✓" : ""}</div>
+              <div className="text-xs" style={{ color: "var(--muted)" }}>{g.blurb}</div>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="glass-panel p-5 mb-6">
@@ -610,6 +653,8 @@ export default function ClubDashboard({ profile, club, onSignOut }) {
   const [activeTab, setActiveTab] = useState("teams");
   const [error, setError] = useState("");
   const [logo, setLogo] = useState(club.logo_url || null);
+  const [theme, setTheme] = useState(club.theme || {});
+  const shape = theme.emblem_shape === "round" ? "round" : "square";
 
   const loadTeams = async () => {
     setLoading(true);
@@ -644,6 +689,7 @@ export default function ClubDashboard({ profile, club, onSignOut }) {
       title={openTeam ? openTeam.name : club.name}
       subtitle={openTeam ? [club.name, openTeam.age_group].filter(Boolean).join(" · ") : undefined}
       logo={logo}
+      shape={shape}
       onSignOut={onSignOut}
     />
   );
@@ -691,7 +737,7 @@ export default function ClubDashboard({ profile, club, onSignOut }) {
       ) : activeTab === "documents" ? (
         <ClubDocumentsTab club={club} />
       ) : activeTab === "settings" ? (
-        <ClubSettingsTab profile={profile} club={club} logo={logo} onLogoChange={setLogo} />
+        <ClubSettingsTab profile={profile} club={club} logo={logo} onLogoChange={setLogo} theme={theme} onThemeChange={setTheme} />
       ) : (
       <div className="max-w-5xl mx-auto px-4 py-8">
         <h1 className="font-display text-2xl tracking-wide mb-6">Teams</h1>
