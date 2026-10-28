@@ -1121,28 +1121,18 @@ function EventCard({ event, players, editable, ownChildIds, onDeleted, onUpdated
           </div>
           {event.type === "match" ? (
             <div className="flex items-baseline gap-2 flex-wrap">
-              <span
-                className="font-display"
-                style={{
-                  fontSize: "1.6rem",
-                  fontWeight: 800,
-                  background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 55%, var(--accent-dark) 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.35))",
-                }}
-              >
+              <span style={{ fontSize: "1.6rem", fontWeight: 600, color: "#ffffff" }}>
                 Match vs {event.opponent || "TBC"}
               </span>
               {(event.our_score !== null && event.our_score !== undefined && event.their_score !== null && event.their_score !== undefined) && (
-                <span className="font-display font-mono" style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--gold-light)" }}>
+                <span style={{ fontSize: "1.3rem", fontWeight: 600, color: "#ffffff" }}>
                   {event.our_score} - {event.their_score}
                 </span>
               )}
-              {event.title && <span className="font-display text-base" style={{ color: "var(--muted)" }}>- {event.title}</span>}
+              {event.title && <span className="text-base" style={{ color: "#ffffff" }}>- {event.title}</span>}
             </div>
           ) : (
-            <div className="font-display text-lg tracking-wide">{event.title || "Training session"}</div>
+            <div className="text-lg font-semibold">{event.title || "Training session"}</div>
           )}
           <div className="text-xs mt-1 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ color: "var(--muted)" }}>
             <span>{event.date}{event.time ? ` · ${event.time}` : ""}</span>
@@ -1418,7 +1408,7 @@ function MatchDaysTab({ team }) {
                 <div className="font-medium">
                   {m.title || `vs ${m.opponent || "TBC"}`}
                   {m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
-                    <span className="ml-2 font-mono text-sm" style={{ color: "var(--gold-light)" }}>{m.our_score} - {m.their_score}</span>
+                    <span className="ml-2 text-sm" style={{ color: "#ffffff" }}>{m.our_score} - {m.their_score}</span>
                   )}
                 </div>
                 <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>

@@ -76,28 +76,18 @@ function ClubCalendarDay({ dateStr, teams, onBack }) {
               </div>
               {ev.type === "match" ? (
                 <div className="flex items-baseline gap-2 flex-wrap">
-                  <span
-                    className="font-display"
-                    style={{
-                      fontSize: "1.6rem",
-                      fontWeight: 800,
-                      background: "linear-gradient(180deg, #ffffff 0%, var(--accent) 55%, var(--accent-dark) 100%)",
-                      WebkitBackgroundClip: "text",
-                      WebkitTextFillColor: "transparent",
-                      filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.35))",
-                    }}
-                  >
+                  <span style={{ fontSize: "1.6rem", fontWeight: 600, color: "#ffffff" }}>
                     Match vs {ev.opponent || "TBC"}
                   </span>
                   {(ev.our_score !== null && ev.our_score !== undefined && ev.their_score !== null && ev.their_score !== undefined) && (
-                    <span className="font-display font-mono" style={{ fontSize: "1.3rem", fontWeight: 800, color: "var(--gold-light)" }}>
+                    <span style={{ fontSize: "1.3rem", fontWeight: 600, color: "#ffffff" }}>
                       {ev.our_score} - {ev.their_score}
                     </span>
                   )}
-                  {ev.title && <span className="font-display text-base" style={{ color: "var(--muted)" }}>- {ev.title}</span>}
+                  {ev.title && <span className="text-base" style={{ color: "#ffffff" }}>- {ev.title}</span>}
                 </div>
               ) : (
-                <div className="font-display text-lg tracking-wide">{ev.title || "Training session"}</div>
+                <div className="text-lg font-semibold">{ev.title || "Training session"}</div>
               )}
               <div className="text-xs mt-1 flex flex-wrap items-center gap-x-3 gap-y-1" style={{ color: "var(--muted)" }}>
                 {ev.time && <span>{ev.time}</span>}

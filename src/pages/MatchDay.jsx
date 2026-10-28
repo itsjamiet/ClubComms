@@ -28,66 +28,120 @@ export function buildSegments(breakdown) {
   return Array.from({ length: count }).map((_, i) => ({ id: uid(), label: labels[i], playerIds: [], positions: {}, notes: "", goals: {} }));
 }
 
-// Positions are decided purely by the ORDER players are picked:
-//   1st = defence, 2nd = left midfield, 3rd = right midfield, 4th = striker,
-//   then every extra player is added to defence, midfield, attack in turn
-//   (so 7v7 / 9v9 simply fill each line out).
-const LINE_X = { def: 24, mid: 52, atk: 78 };
+// ---------- Formations (tap a cross, then tap a player) ----------
+// lines = players per line from defence to attack; xs = pitch x of each line.
+// Every formation also gets a goalkeeper ("gk").
+export const FORMATIONS = {
+  "5v5": [
+    { id: "5-diamond", label: "Diamond (1-2-1)", lines: [1, 2, 1], xs: [28, 52, 78] },
+    { id: "5-square", label: "Square (2-2)", lines: [2, 2], xs: [34, 70] },
+  ],
+  "7v7": [
+    { id: "7-222", label: "2-2-2", lines: [2, 2, 2], xs: [28, 52, 78] },
+    { id: "7-231", label: "2-3-1", lines: [2, 3, 1], xs: [28, 52, 78] },
+  ],
+  "9v9": [
+    { id: "9-332", label: "3-3-2", lines: [3, 3, 2], xs: [28, 52, 78] },
+    { id: "9-341", label: "3-4-1", lines: [3, 4, 1], xs: [28, 52, 78] },
+  ],
+  "11v11": [
+    { id: "11-442", label: "4-4-2", lines: [4, 4, 2], xs: [28, 52, 78] },
+    { id: "11-433", label: "4-3-3", lines: [4, 3, 3], xs: [28, 52, 78] },
+  ],
+};
 
-function roleForIndex(n) {
-  if (n === 0) return "def";
-  if (n === 1) return "lm";
-  if (n === 2) return "rm";
-  if (n === 3) return "atk";
-  return ["def", "mid", "atk"][(n - 4) % 3];
+export function formationFor(format, formationId) {
+  const list = FORMATIONS[format] || FORMATIONS["7v7"];
+  return list.find((f) => f.id === formationId) || list[0];
 }
 
-function autoLayoutPositions(selectedIds) {
-  const lines = { def: [], mid: [], atk: [] };
-  const lm = [];
-  const rm = [];
-  const midExtras = [];
-  selectedIds.forEach((id, i) => {
-    const role = roleForIndex(i);
-    if (role === "def") lines.def.push(id);
-    else if (role === "atk") lines.atk.push(id);
-    else if (role === "lm") lm.push(id);
-    else if (role === "rm") rm.push(id);
-    else midExtras.push(id);
+// Ordered list of spots: goalkeeper first, then each line (top to bottom).
+export function formationSlots(formation) {
+  const slots = [{ id: "gk", x: 7, y: 33, label: "GK" }];
+  formation.lines.forEach((n, li) => {
+    for (let i = 0; i < n; i++) {
+      slots.push({ id: `${li}-${i}`, x: formation.xs[li], y: (66 * (i + 1)) / (n + 1) });
+    }
   });
-  lines.mid = [...lm, ...midExtras, ...rm];
+  return slots;
+}
 
-  const positions = {};
-  Object.entries(lines).forEach(([group, arr]) => {
-    arr.forEach((id, i) => {
-      positions[id] = { x: LINE_X[group], y: (66 * (i + 1)) / (arr.length + 1) };
+// Who is in which spot. Older line-ups (no spots saved yet) are filled in order.
+export function slotsOf(segment, slotList) {
+  if (segment.slots) {
+    const valid = new Set(slotList.map((s) => s.id));
+    const out = {};
+    Object.entries(segment.slots).forEach(([k, v]) => {
+      if (valid.has(k) && v) out[k] = v;
     });
+    return out;
+  }
+  const out = {};
+  (segment.playerIds || []).forEach((pid, i) => {
+    if (slotList[i]) out[slotList[i].id] = pid;
   });
-  return positions;
+  return out;
 }
 
-function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelection, onMovePlayer, onNotesChange, onGoalChange }) {
-  const svgRef = useRef(null);
+function withSlots(segment, slotList, slots) {
+  const playerIds = slotList.map((s) => slots[s.id]).filter(Boolean);
+  return { ...segment, slots, playerIds };
+}
+
+function MatchDayPitch({ segment, players, format, editable, onAssign, onClear, onToggleSelection, onNotesChange, onGoalChange }) {
   const [picking, setPicking] = useState(false);
-  const [dragId, setDragId] = useState(null);
+  const [sel, setSel] = useState(null); // { kind: "slot" | "player", id }
+
+  const formation = formationFor(format, segment.formation);
+  const slotList = formationSlots(formation);
+  const formatSize = slotList.length;
+  const slots = slotsOf(segment, slotList);
+  const slotOfPlayer = {};
+  Object.entries(slots).forEach(([sid, pid]) => (slotOfPlayer[pid] = sid));
 
   const byId = Object.fromEntries(players.map((p) => [p.id, p]));
   const onPitch = segment.playerIds.map((id) => byId[id]).filter(Boolean);
   const subs = players.filter((p) => !segment.playerIds.includes(p.id));
   const goals = segment.goals || {};
 
-  const getPoint = (e) => {
-    const rect = svgRef.current.getBoundingClientRect();
-    const x = Math.max(2, Math.min(98, ((e.clientX - rect.left) / rect.width) * 100));
-    const y = Math.max(2, Math.min(64, ((e.clientY - rect.top) / rect.height) * 66));
-    return { x, y };
+  const tapSlot = (slot) => {
+    if (!editable) return;
+    const occupant = slots[slot.id];
+    if (!sel) {
+      setSel(occupant ? { kind: "player", id: occupant } : { kind: "slot", id: slot.id });
+    } else if (sel.kind === "player") {
+      if (occupant === sel.id) setSel(null);
+      else {
+        onAssign(segment.id, slot.id, sel.id);
+        setSel(null);
+      }
+    } else {
+      // a cross was selected first
+      if (sel.id === slot.id) setSel(null);
+      else if (occupant) {
+        onAssign(segment.id, sel.id, occupant);
+        setSel(null);
+      } else setSel({ kind: "slot", id: slot.id });
+    }
   };
 
-  const handlePointerMove = (e) => {
-    if (!dragId) return;
-    onMovePlayer(segment.id, dragId, getPoint(e));
+  const tapPlayerChip = (pid) => {
+    if (!editable) return;
+    if (sel?.kind === "slot") {
+      onAssign(segment.id, sel.id, pid);
+      setSel(null);
+    } else if (sel?.kind === "player" && sel.id === pid) setSel(null);
+    else setSel({ kind: "player", id: pid });
   };
-  const handlePointerUp = () => setDragId(null);
+
+  const selSlotId = sel?.kind === "slot" ? sel.id : sel?.kind === "player" ? slotOfPlayer[sel.id] : null;
+  const hint = !editable
+    ? null
+    : !sel
+    ? "Tap a cross, then tap a player to put them there. Tap a player on the pitch to move them."
+    : sel.kind === "slot"
+    ? "Now tap a player below (or a player already on the pitch)."
+    : `Now tap a cross to move ${byId[sel.id]?.name || "this player"}, or another player to swap.`;
 
   return (
     <div className="glass-panel p-4">
@@ -97,20 +151,15 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
       </div>
 
       <svg
-        ref={svgRef}
         viewBox="0 0 100 66"
-        className="w-full mb-3"
+        className="w-full mb-2"
         style={{
           aspectRatio: "3/2",
           background: "repeating-linear-gradient(90deg, rgba(255,255,255,0.045) 0 40px, rgba(0,0,0,0.02) 40px 80px), linear-gradient(180deg, #168a3f, #136b34)",
           border: "2px solid rgba(255,255,255,0.35)",
           borderRadius: 6,
-          touchAction: editable ? "none" : "auto",
+          touchAction: "manipulation",
         }}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        onPointerCancel={handlePointerUp}
       >
         <rect x="1" y="1" width="98" height="64" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" />
         <line x1="50" y1="1" x2="50" y2="65" stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" />
@@ -118,30 +167,71 @@ function MatchDayPitch({ segment, players, formatSize, editable, onToggleSelecti
         <rect x="1" y="18" width="10" height="30" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" />
         <rect x="89" y="18" width="10" height="30" fill="none" stroke="rgba(255,255,255,0.55)" strokeWidth="0.6" />
 
-        {onPitch.map((p) => {
-          const pos = segment.positions[p.id] || { x: 50, y: 33 };
+        {slotList.map((slot) => {
+          const pid = slots[slot.id];
+          const p = pid ? byId[pid] : null;
+          const active = selSlotId === slot.id;
           return (
-            <g
-              key={p.id}
-              style={{ cursor: editable ? (dragId === p.id ? "grabbing" : "grab") : "default", touchAction: "none" }}
-              onPointerDown={(e) => {
-                if (!editable) return;
-                e.preventDefault();
-                e.currentTarget.setPointerCapture?.(e.pointerId);
-                setDragId(p.id);
-              }}
-            >
-              <circle cx={pos.x} cy={pos.y} r="7" fill="transparent" />
-              <text x={pos.x} y={pos.y - 3.5} textAnchor="middle" fontSize="3.2" fill="white" fontWeight="700">{shortLabel(p.name)}</text>
-              <circle cx={pos.x} cy={pos.y} r="3.4" fill="#2E7CF6" stroke="white" strokeWidth="0.5" />
+            <g key={slot.id} data-slot={slot.id} style={{ cursor: editable ? "pointer" : "default" }} onClick={() => tapSlot(slot)}>
+              <circle cx={slot.x} cy={slot.y} r="7" fill="transparent" />
+              {p ? (
+                <>
+                  <text x={slot.x} y={slot.y - 4.6} textAnchor="middle" fontSize="3.3" fill="white" fontWeight="700">{shortLabel(p.name)}</text>
+                  <circle cx={slot.x} cy={slot.y} r="3.8" fill={slot.id === "gk" ? "#e0a21b" : "#2E7CF6"} stroke={active ? "#ffe066" : "white"} strokeWidth={active ? 1.2 : 0.5} />
+                  {slot.id === "gk" && <text x={slot.x} y={slot.y + 1.1} textAnchor="middle" fontSize="3" fill="#06143a" fontWeight="800">GK</text>}
+                </>
+              ) : (
+                <>
+                  {active && <circle cx={slot.x} cy={slot.y} r="5" fill="rgba(255,224,102,0.25)" stroke="#ffe066" strokeWidth="0.8" />}
+                  <line x1={slot.x - 2.6} y1={slot.y - 2.6} x2={slot.x + 2.6} y2={slot.y + 2.6} stroke={active ? "#ffe066" : "white"} strokeWidth="1" strokeLinecap="round" />
+                  <line x1={slot.x - 2.6} y1={slot.y + 2.6} x2={slot.x + 2.6} y2={slot.y - 2.6} stroke={active ? "#ffe066" : "white"} strokeWidth="1" strokeLinecap="round" />
+                  {slot.id === "gk" && <text x={slot.x} y={slot.y + 7.5} textAnchor="middle" fontSize="3" fill="white" fontWeight="700">GK</text>}
+                </>
+              )}
             </g>
           );
         })}
       </svg>
 
+      {hint && <p className="text-xs mb-3" style={{ color: "var(--muted)" }}>{hint}</p>}
+
+      {editable && sel && (
+        <div className="glass-card p-3 mb-3">
+          {sel.kind === "player" && (
+            <button
+              className="btn-ghost px-3 py-1.5 rounded-lg text-sm mb-2"
+              onClick={() => {
+                onClear(segment.id, slotOfPlayer[sel.id]);
+                setSel(null);
+              }}
+            >
+              Move {byId[sel.id]?.name || "player"} to the bench
+            </button>
+          )}
+          <div className="flex flex-wrap gap-1.5">
+            {players.map((p) => (
+              <button
+                key={p.id}
+                data-chip={p.id}
+                className="text-sm px-3 py-1.5 rounded-full"
+                style={{
+                  background: sel.kind === "player" && sel.id === p.id ? "var(--accent)" : slotOfPlayer[p.id] ? "rgba(46,124,246,0.22)" : "rgba(255,255,255,0.1)",
+                  color: "white",
+                  border: "1px solid rgba(255,255,255,0.14)",
+                }}
+                onClick={() => tapPlayerChip(p.id)}
+              >
+                {p.name || "Unnamed"}
+                {slotOfPlayer[p.id] ? " ✓" : ""}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {editable && (
         <button className="btn-ghost w-full py-2 rounded-lg text-sm mb-3" onClick={() => setPicking((v) => !v)}>
-          {picking ? "Close" : "Select players"}
+          {picking ? "Close" : "Quick pick players"}
         </button>
       )}
 
@@ -360,7 +450,8 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
       next.segments = matchday.segments.map((s) => {
         const positions = { ...s.positions };
         delete positions[playerId];
-        return { ...s, playerIds: s.playerIds.filter((id) => id !== playerId), positions };
+        const slots = s.slots ? Object.fromEntries(Object.entries(s.slots).filter(([, v]) => v !== playerId)) : s.slots;
+        return { ...s, playerIds: s.playerIds.filter((id) => id !== playerId), positions, ...(slots ? { slots } : {}) };
       });
       const awards = { ...matchday.awards };
       let awardsChanged = false;
@@ -436,40 +527,61 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
     persist({ ...matchday, breakdown, segments: buildSegments(breakdown) });
   };
   const setFormat = (format) => {
-    persist({ ...matchday, format, segments: matchday.segments.map((s) => ({ ...s, playerIds: [], positions: {}, moved: false })) });
+    const formation = formationFor(format).id;
+    persist({ ...matchday, format, segments: matchday.segments.map((s) => ({ ...s, formation, playerIds: [], slots: {}, positions: {} })) });
   };
 
-  const toggleSelection = (segmentId, playerId) => {
-    const formatSize = FORMAT_SIZES[matchday.format];
+  const setFormation = (formationId) => {
+    const nf = formationFor(matchday.format, formationId);
+    const newSlots = formationSlots(nf);
     const segments = matchday.segments.map((s) => {
-      if (s.id !== segmentId) return s;
-      const already = s.playerIds.includes(playerId);
-      let playerIds;
-      if (already) playerIds = s.playerIds.filter((id) => id !== playerId);
-      else {
-        if (s.playerIds.length >= formatSize) return s;
-        playerIds = [...s.playerIds, playerId];
-      }
-      const computed = autoLayoutPositions(playerIds);
-      let positions;
-      if (!s.moved) {
-        positions = computed; // nothing dragged yet: re-tidy the whole line-up
-      } else if (already) {
-        positions = { ...s.positions };
-        delete positions[playerId];
-      } else {
-        positions = { ...s.positions, [playerId]: computed[playerId] }; // keep coach's manual spots
-      }
-      return { ...s, playerIds, positions };
+      const oldList = formationSlots(formationFor(matchday.format, s.formation));
+      const oldSlots = slotsOf(s, oldList);
+      const next = {};
+      oldList.forEach((o, i) => {
+        if (oldSlots[o.id] && newSlots[i]) next[newSlots[i].id] = oldSlots[o.id];
+      });
+      return withSlots({ ...s, formation: nf.id }, newSlots, next);
     });
     persist({ ...matchday, segments });
   };
 
-  const movePlayer = (segmentId, playerId, pos) => {
-    const segments = matchday.segments.map((s) =>
-      s.id !== segmentId ? s : { ...s, moved: true, positions: { ...s.positions, [playerId]: pos } }
-    );
+  const assign = (segmentId, slotId, playerId) => {
+    const segments = matchday.segments.map((s) => {
+      if (s.id !== segmentId) return s;
+      const list = formationSlots(formationFor(matchday.format, s.formation));
+      const slots = { ...slotsOf(s, list) };
+      const displaced = slots[slotId];
+      const oldSlot = Object.keys(slots).find((k) => slots[k] === playerId);
+      if (oldSlot) delete slots[oldSlot];
+      slots[slotId] = playerId;
+      if (displaced && displaced !== playerId && oldSlot) slots[oldSlot] = displaced; // swap
+      return withSlots(s, list, slots);
+    });
     persist({ ...matchday, segments });
+  };
+
+  const clearSlot = (segmentId, slotId) => {
+    const segments = matchday.segments.map((s) => {
+      if (s.id !== segmentId) return s;
+      const list = formationSlots(formationFor(matchday.format, s.formation));
+      const slots = { ...slotsOf(s, list) };
+      delete slots[slotId];
+      return withSlots(s, list, slots);
+    });
+    persist({ ...matchday, segments });
+  };
+
+  // Quick pick: add to the first empty spot, or take the player off the pitch.
+  const toggleSelection = (segmentId, playerId) => {
+    const seg = matchday.segments.find((s) => s.id === segmentId);
+    if (!seg) return;
+    const list = formationSlots(formationFor(matchday.format, seg.formation));
+    const slots = slotsOf(seg, list);
+    const existing = Object.keys(slots).find((k) => slots[k] === playerId);
+    if (existing) return clearSlot(segmentId, existing);
+    const free = list.find((sl) => !slots[sl.id]);
+    if (free) assign(segmentId, free.id, playerId);
   };
 
   const setNotes = (segmentId, notes) => {
@@ -564,7 +676,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
           {event?.date}{event?.time ? ` · ${event.time}` : ""}{event?.location ? ` · ${event.location}` : ""}
         </div>
         <div className="font-display text-xl mt-1">
-          {teamName} {hasScore ? <span style={{ color: "var(--gold-light)" }}>{event.our_score} – {event.their_score}</span> : "v"} {event?.opponent || "TBC"}
+          {teamName} {hasScore ? <span>{event.our_score} – {event.their_score}</span> : "v"} {event?.opponent || "TBC"}
         </div>
         {awardHolders.length > 0 && (
           <div className="flex flex-wrap justify-center gap-2 mt-3">
@@ -688,7 +800,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
         </div>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="glass-panel p-4">
           <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Match times</label>
           <select
@@ -717,6 +829,20 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
             <option value="11v11">11 v 11</option>
           </select>
         </div>
+        <div className="glass-panel p-4">
+          <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Formation</label>
+          <select
+            className="w-full mt-1 rounded-lg px-2.5 py-2"
+            style={{ background: "#2E4E80", color: "white", border: "1px solid rgba(255,255,255,0.14)" }}
+            value={formationFor(matchday.format, matchday.segments[0]?.formation).id}
+            disabled={!editable}
+            onChange={(e) => setFormation(e.target.value)}
+          >
+            {(FORMATIONS[matchday.format] || []).map((f) => (
+              <option key={f.id} value={f.id}>{f.label}</option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -725,10 +851,11 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
             key={segment.id}
             segment={segment}
             players={squadPlayers}
-            formatSize={formatSize}
+            format={matchday.format}
             editable={editable}
+            onAssign={assign}
+            onClear={clearSlot}
             onToggleSelection={toggleSelection}
-            onMovePlayer={movePlayer}
             onNotesChange={setNotes}
             onGoalChange={setGoal}
           />
