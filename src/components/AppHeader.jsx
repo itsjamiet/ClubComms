@@ -12,8 +12,8 @@ export function useClubForTeam(teamId) {
     (async () => {
       const { data: t } = await supabase.from("teams").select("club_id").eq("id", teamId).maybeSingle();
       if (!t?.club_id) return;
-      const { data: c } = await supabase.from("clubs").select("id, name, logo_url").eq("id", t.club_id).maybeSingle();
-      if (!cancelled && c) setClub(c);
+      const { data: c } = await supabase.from("clubs").select("id, name, logo_url, theme").eq("id", t.club_id).maybeSingle();
+      if (!cancelled && c) setClub({ ...c, shape: c.theme?.emblem_shape === "round" ? "round" : "square", gazetteStyle: c.theme?.gazette_style || "clean" });
     })();
     return () => {
       cancelled = true;
@@ -22,29 +22,36 @@ export function useClubForTeam(teamId) {
   return club;
 }
 
-function Emblem({ logo, size }) {
+export function Emblem({ logo, size, shape = "square" }) {
   if (logo) {
-    return <img src={logo} alt="" style={{ height: size, width: size, objectFit: "contain" }} className="flex-shrink-0" />;
+    return (
+      <img
+        src={logo}
+        alt=""
+        style={{ height: size, width: size, objectFit: shape === "round" ? "cover" : "contain", borderRadius: shape === "round" ? "50%" : 8 }}
+        className="flex-shrink-0"
+      />
+    );
   }
   return <Shield style={{ height: size * 0.7, width: size * 0.7, color: "var(--accent)" }} className="flex-shrink-0" />;
 }
 
 // Centred title bar: [emblem] NAME [emblem], with optional left / right slots.
-export default function AppHeader({ title, subtitle, logo, left, onSignOut }) {
+export default function AppHeader({ title, subtitle, logo, shape = "square", left, onSignOut }) {
   return (
     <div
       className="grid items-center px-3 sm:px-6 py-3"
-      style={{ gridTemplateColumns: "1fr auto 1fr", borderBottom: "1px solid rgba(255,255,255,0.08)", minHeight: 72 }}
+      style={{ gridTemplateColumns: "1fr auto 1fr", borderBottom: "1px solid rgba(255,255,255,0.08)", minHeight: 96 }}
     >
       <div className="flex items-center min-w-0">{left}</div>
       <div className="flex flex-col items-center text-center min-w-0 px-2">
         <div className="flex items-center justify-center gap-3">
-          <Emblem logo={logo} size={44} />
-          <span className="font-display text-2xl sm:text-3xl tracking-wide leading-tight">{title}</span>
-          <Emblem logo={logo} size={44} />
+          <Emblem logo={logo} size={64} shape={shape} />
+          <span className="font-display text-3xl sm:text-4xl font-semibold tracking-wide leading-tight">{title}</span>
+          <Emblem logo={logo} size={64} shape={shape} />
         </div>
         {subtitle && (
-          <span className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
+          <span className="text-sm mt-0.5" style={{ color: "var(--muted)" }}>
             {subtitle}
           </span>
         )}
