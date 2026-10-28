@@ -13,7 +13,7 @@ export function useClubForTeam(teamId) {
       const { data: t } = await supabase.from("teams").select("club_id").eq("id", teamId).maybeSingle();
       if (!t?.club_id) return;
       const { data: c } = await supabase.from("clubs").select("id, name, logo_url, theme").eq("id", t.club_id).maybeSingle();
-      if (!cancelled && c) setClub({ ...c, shape: c.theme?.emblem_shape === "round" ? "round" : "square", gazetteStyle: c.theme?.gazette_style || "clean" });
+      if (!cancelled && c) setClub({ ...c, shape: c.theme?.emblem_shape === "round" ? "round" : "square", gazetteStyle: c.theme?.gazette_style || "bold" });
     })();
     return () => {
       cancelled = true;
