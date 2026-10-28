@@ -73,7 +73,7 @@ export function buildGazetteHtml({
   clubName,
   clubLogo,
   emblemShape = "square",
-  variant = "clean",
+  variant = "bold",
   headline,
   body,
   date,
