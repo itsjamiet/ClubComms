@@ -9,12 +9,12 @@
   --accent: #2E7CF6;
   --accent-dark: #123a8a;
   --bg-deep: #020d27;
-  --bg-panel: #07173d;
-  --bg-panel-2: #0c2250;
+  --bg-panel: #040e29;
+  --bg-panel-2: #061538;
   --gold: #d4af37;
   --gold-light: #f1d97a;
-  --white: #f5f7fb;
-  --muted: #9fb0d4;
+  --white: #ffffff;
+  --muted: #d3dcf0;
 }
 
 * {
@@ -33,15 +33,16 @@ html {
 body {
   margin: 0;
   font-family: 'Inter', sans-serif;
-  color: var(--white);
+  color: #ffffff;
   background: var(--bg-deep);
   min-height: 100vh;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.35);
 }
 #root { background: var(--bg-deep); min-height: 100vh; height: auto; }
 
-/* Glossier writing: soft highlight + glow on headings */
-h1, h2, h3, .font-display {
+/* Plain, solid white writing everywhere (no gradients, glows or fading) */
+h1, h2, h3, h4, .font-display { color: #ffffff; text-shadow: none; }
+
+.font-display {
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.28), 0 2px 10px rgba(70, 130, 255, 0.4);
 }
 h1, h2 {
@@ -98,7 +99,7 @@ input, textarea, select, button { text-shadow: none; }
 .btn-ghost:hover { background: rgba(255,255,255,0.09); }
 
 .input-dark {
-  background: rgba(255,255,255,0.05);
+  background: rgba(0,0,0,0.28);
   border: 1px solid rgba(255,255,255,0.14);
   color: var(--white);
   border-radius: 8px;
@@ -109,7 +110,6 @@ input, textarea, select, button { text-shadow: none; }
 .input-dark:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 .input-dark:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.input-dark, .font-display.input-dark { text-shadow: none; }
 
 /* Unread alert dot / count on tabs */
 .tab-badge {
