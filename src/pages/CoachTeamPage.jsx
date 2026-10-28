@@ -1406,7 +1406,7 @@ function MatchDaysTab({ team }) {
             <button key={m.id} className="glass-card w-full flex items-center gap-3 p-3 text-left" onClick={() => openMatch(m)}>
               <div className="flex-1">
                 <div className="font-medium">
-                  {m.title || `vs ${m.opponent || "TBC"}`}
+                  {`${team.name} vs ${m.opponent || "TBC"}`}
                   {m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
                     <span className="ml-2 text-sm" style={{ color: "#ffffff" }}>{m.our_score} - {m.their_score}</span>
                   )}
