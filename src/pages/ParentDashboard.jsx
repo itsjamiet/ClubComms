@@ -572,7 +572,7 @@ function ParentMatchDaysTab({ teamId, teamName }) {
           clubName: club?.name,
           clubLogo: club?.logo_url,
           emblemShape: club?.shape,
-          variant: club?.gazetteStyle,
+          variant: open.report?.style || club?.gazetteStyle,
           headline: open.report.headline,
           body: open.report.body,
           date: open.date,

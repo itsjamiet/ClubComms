@@ -3,7 +3,7 @@ import { Download, Printer, Star, Shield as ShieldIcon } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
 import { useClubForTeam } from "../components/AppHeader.jsx";
 import { findStatIndex } from "../lib/utils.js";
-import { buildGazetteHtml, downloadGazettePng, printGazette, GAZETTE_WIDTH } from "../lib/gazette.js";
+import { buildGazetteHtml, downloadGazettePng, printGazette, GAZETTE_WIDTH, GAZETTE_STYLES } from "../lib/gazette.js";
 
 export const FORMAT_SIZES = { "5v5": 5, "7v7": 7, "9v9": 9, "11v11": 11 };
 const BREAKDOWN_COUNTS = { quarters: 4, halves: 2 };
@@ -304,6 +304,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
   const [reportError, setReportError] = useState("");
   const saveTimer = useRef(null);
   const club = useClubForTeam(teamId);
+  const [styleSel, setStyleSel] = useState(null);
 
   useEffect(() => {
     setLoading(true);
@@ -325,6 +326,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
       setPlayers(pl || []);
       setEvent(ev);
       setReport(rep || null);
+      setStyleSel(rep?.style || null);
       setScore({ our: ev?.our_score ?? "", their: ev?.their_score ?? "" });
       setDraft({ headline: rep?.headline || "", body: rep?.body || "" });
       setLoading(false);
@@ -492,7 +494,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
       clubName: club?.name,
       clubLogo: club?.logo_url,
       emblemShape: club?.shape,
-      variant: club?.gazetteStyle,
+      variant: styleSel || rep?.style || club?.gazetteStyle,
       headline,
       body,
       date: event?.date,
@@ -516,6 +518,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
       team_id: teamId,
       event_id: matchday.event_id || event?.id || null,
       headline: draft.headline.trim() || null,
+      style: styleSel || club?.gazetteStyle || "bold",
       body: draft.body,
       awards,
       updated_at: new Date().toISOString(),
@@ -546,7 +549,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
   const formatSize = FORMAT_SIZES[matchday.format];
   const hasScore = event && event.our_score !== null && event.our_score !== undefined && event.their_score !== null && event.their_score !== undefined;
   const awardHolders = AWARD_DEFS.map((a) => ({ ...a, player: playersById[awards[a.key]] })).filter((a) => a.player);
-  const reportChanged = report && (draft.body !== (report.body || "") || (draft.headline || "") !== (report.headline || ""));
+  const reportChanged = report && (draft.body !== (report.body || "") || (draft.headline || "") !== (report.headline || "") || (styleSel || club?.gazetteStyle || "bold") !== (report.style || club?.gazetteStyle || "bold"));
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
@@ -757,6 +760,20 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
             onChange={(e) => setDraft({ ...draft, body: e.target.value })}
           />
           {reportError && <p className="text-sm mt-2" style={{ color: "#f28f8a" }}>{reportError}</p>}
+          <div className="mt-3">
+            <div className="text-xs uppercase tracking-wide mb-1.5" style={{ color: "var(--muted)" }}>Article layout</div>
+            <div className="flex gap-2 flex-wrap">
+              {GAZETTE_STYLES.map((g) => {
+                const on = (styleSel || club?.gazetteStyle || "bold") === g.id;
+                return (
+                  <button key={g.id} onClick={() => setStyleSel(g.id)} title={g.blurb}
+                    className={on ? "btn-accent px-4 py-2 rounded-lg text-sm" : "btn-ghost px-4 py-2 rounded-lg text-sm"}>
+                    {g.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2 mt-3 items-center">
             <button className="btn-accent px-5 py-2.5 rounded-lg" onClick={publish} disabled={publishing}>
               {publishing ? "Publishing…" : report ? (reportChanged ? "Update published report" : "Re-publish") : "Publish report"}

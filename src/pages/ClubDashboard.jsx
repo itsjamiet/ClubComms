@@ -508,7 +508,7 @@ function GazettePreview({ logo, shape, variant, clubName }) {
 
 function ClubSettingsTab({ profile, club, logo, onLogoChange, theme, onThemeChange }) {
   const shape = theme?.emblem_shape === "round" ? "round" : "square";
-  const gStyle = theme?.gazette_style || "clean";
+  const gStyle = theme?.gazette_style || "bold";
   const saveTheme = async (patch) => {
     const next = { ...(theme || {}), ...patch };
     onThemeChange(next);
