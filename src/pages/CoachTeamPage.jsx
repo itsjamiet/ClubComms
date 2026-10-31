@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Users, ArrowLeft, Camera, Trash2, ChevronRight, Pencil } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
 import { uid, toDateString, resizeImage, displayAge, calcAge, findStatIndex, awardsForStat, statTotals, AGE_GROUPS } from "../lib/utils.js";
+import AccountSettings from "../components/AccountSettings.jsx";
 import AppHeader, { useClubForTeam } from "../components/AppHeader.jsx";
 import { useAlertCounts } from "../lib/notifications.js";
 import Announcements from "./Announcements.jsx";
@@ -1489,6 +1490,7 @@ const COACH_TABS = [
   { id: "plans", label: "Training Plans" },
   { id: "session", label: "Training Session" },
   { id: "documents", label: "Documents" },
+  { id: "settings", label: "Settings" },
 ];
 
 export default function CoachTeamPage({ profile, onSignOut }) {
@@ -1618,6 +1620,8 @@ export default function CoachTeamPage({ profile, onSignOut }) {
         activeTeam && <TrainingSessionView team={activeTeam} editable={true} />
       ) : activeTab === "documents" ? (
         activeTeam && <DocumentsView team={activeTeam} editable={true} />
+      ) : activeTab === "settings" ? (
+        <AccountSettings profile={profile} onSignOut={onSignOut} />
       ) : (
         activeTeam && <TeamRoster key={activeTeam.id} team={activeTeam} onOpenPlayer={handleOpenPlayer} />
       )}

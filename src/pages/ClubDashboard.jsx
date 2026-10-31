@@ -5,6 +5,7 @@ import { toDateString, fileToDataUrl, resizeImage, displayAge, statTotals, award
 import ClubCalendarTab from "./ClubCalendar.jsx";
 import Announcements from "./Announcements.jsx";
 import { buildGazetteHtml, GAZETTE_STYLES, GAZETTE_WIDTH } from "../lib/gazette.js";
+import { ChangePasswordCard, DeleteAccountCard, LegalLinks } from "../components/AccountSettings.jsx";
 import AppHeader from "../components/AppHeader.jsx";
 import DropdownMenu, { DropdownItem } from "../components/DropdownMenu.jsx";
 
@@ -634,6 +635,16 @@ function ClubSettingsTab({ profile, club, logo, onLogoChange, theme, onThemeChan
       </div>
 
       <InviteClubAdmin clubId={club.id} />
+
+      <div className="mt-6" />
+      <ChangePasswordCard />
+
+      <div className="glass-panel p-5 mb-6">
+        <h2 className="font-display text-lg mb-3">Privacy and terms</h2>
+        <LegalLinks />
+      </div>
+
+      <DeleteAccountCard role="club" />
     </div>
   );
 }

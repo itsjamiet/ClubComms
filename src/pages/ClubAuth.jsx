@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Shield } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
+import { LegalLinks } from "../components/AccountSettings.jsx";
 
 export default function ClubAuth() {
   const [mode, setMode] = useState("login"); // "login" | "signup"
@@ -19,6 +20,17 @@ export default function ClubAuth() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) setError(error.message);
+  };
+
+  const handleForgot = async (e) => {
+    e.preventDefault();
+    setError("");
+    setNotice("");
+    setLoading(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+    setLoading(false);
+    if (error) setError(error.message);
+    else setNotice("If that email has an account, a reset link is on its way. Check your inbox (and spam).");
   };
 
   const handleSignup = async (e) => {
@@ -48,12 +60,9 @@ export default function ClubAuth() {
     }
 
     // Confirmation not required -- session is active immediately, so create
-    // the club row now and link this profile to it.
-    const { data: club, error: clubError } = await supabase
-      .from("clubs")
-      .insert({ name: clubName || "My Club", owner_id: data.user.id })
-      .select()
-      .single();
+    // the club now via the server-side function (the database decides who
+    // "you" are from your session, rather than trusting a value the app sends).
+    const { error: clubError } = await supabase.rpc("create_my_club", { club_name: clubName });
 
     if (clubError) {
       setError(clubError.message);
@@ -61,7 +70,6 @@ export default function ClubAuth() {
       return;
     }
 
-    await supabase.from("profiles").update({ club_id: club.id }).eq("id", data.user.id);
     setLoading(false);
   };
 
@@ -96,7 +104,7 @@ export default function ClubAuth() {
             </button>
           </div>
 
-          <form onSubmit={mode === "login" ? handleLogin : handleSignup} className="space-y-3">
+          <form onSubmit={mode === "login" ? handleLogin : mode === "forgot" ? handleForgot : handleSignup} className="space-y-3">
             {mode === "signup" && (
               <>
                 <div>
@@ -113,19 +121,32 @@ export default function ClubAuth() {
               <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Email</label>
               <input type="email" className="input-dark w-full mt-1" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
+            {mode !== "forgot" && (
             <div>
               <label className="text-xs uppercase tracking-wide" style={{ color: "var(--muted)" }}>Password</label>
               <input type="password" className="input-dark w-full mt-1" value={password} onChange={(e) => setPassword(e.target.value)} minLength={6} required />
             </div>
+            )}
 
             {error && <p className="text-sm" style={{ color: "#f28f8a" }}>{error}</p>}
             {notice && <p className="text-sm" style={{ color: "var(--gold-light)" }}>{notice}</p>}
 
             <button type="submit" className="btn-accent w-full py-3 rounded-lg mt-2" disabled={loading}>
-              {loading ? "Please wait…" : mode === "login" ? "Log in" : "Create club"}
+              {loading ? "Please wait…" : mode === "login" ? "Log in" : mode === "forgot" ? "Send reset link" : "Create club"}
             </button>
           </form>
+          {mode === "login" && (
+            <button type="button" className="text-sm mt-4 underline" style={{ color: "var(--muted)" }} onClick={() => { setMode("forgot"); setError(""); setNotice(""); }}>
+              Forgot password?
+            </button>
+          )}
+          {mode === "forgot" && (
+            <button type="button" className="text-sm mt-4 underline" style={{ color: "var(--muted)" }} onClick={() => { setMode("login"); setError(""); setNotice(""); }}>
+              Back to log in
+            </button>
+          )}
         </div>
+        <div className="mt-5 flex justify-center"><LegalLinks /></div>
       </div>
     </div>
   );

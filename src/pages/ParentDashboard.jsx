@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, ArrowLeft, ChevronRight, Camera } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
 import { toDateString, resizeImage, calcAge, displayAge, awardsForStat, statTotals } from "../lib/utils.js";
+import AccountSettings from "../components/AccountSettings.jsx";
 import AppHeader, { useClubForTeam } from "../components/AppHeader.jsx";
 import { useAlertCounts } from "../lib/notifications.js";
 import Announcements from "./Announcements.jsx";
@@ -633,6 +634,7 @@ const PARENT_TABS = [
   { id: "matchday", label: "Match Day" },
   { id: "plans", label: "Training Plans" },
   { id: "documents", label: "Documents" },
+  { id: "settings", label: "Settings" },
 ];
 
 export default function ParentDashboard({ profile, onSignOut }) {
@@ -777,6 +779,8 @@ export default function ParentDashboard({ profile, onSignOut }) {
         <ParentTrainingPlansTab children={children.filter((c) => c.team_id === activeTeamId)} />
       ) : activeTab === "documents" ? (
         <DocumentsView team={{ id: activeTeamId }} editable={false} />
+      ) : activeTab === "settings" ? (
+        <AccountSettings profile={profile} onSignOut={onSignOut} />
       ) : (
         <div className="max-w-5xl mx-auto px-4 py-8">
           <h1 className="font-display text-2xl tracking-wide mb-6">{activeTeam?.name}</h1>

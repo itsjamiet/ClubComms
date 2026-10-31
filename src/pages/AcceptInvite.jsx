@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Shield } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
+import { LegalLinks } from "../components/AccountSettings.jsx";
 
 export default function AcceptInvite({ inviteId, session, onDone }) {
   const [info, setInfo] = useState(null); // { team_name, role, used }
@@ -165,9 +166,10 @@ export default function AcceptInvite({ inviteId, session, onDone }) {
               {loading ? "Please wait…" : `Join as ${info.role}`}
             </button>
           </form>
+          <p className="text-xs mt-4 mb-2" style={{ color: "var(--muted)" }}>By joining you agree to the terms and privacy policy.</p>
+          <LegalLinks />
         </div>
       </div>
     </div>
   );
 }
-
