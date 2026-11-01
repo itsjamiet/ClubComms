@@ -243,3 +243,40 @@ export function printGazette(html, title) {
   w.document.close();
   return true;
 }
+
+// ---------- Fixtures list (club view) ----------
+// groups: [{ date: "2026-11-07", fixtures: [{ team, opponent, time, location }] }]
+function fixtureDateLabel(dateStr) {
+  const [y, m, d] = String(dateStr).slice(0, 10).split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (Number.isNaN(dt.getTime())) return esc(dateStr);
+  const weekday = dt.toLocaleDateString("en-GB", { weekday: "long" });
+  return `${weekday} ${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+}
+
+export function buildFixturesHtml({ clubName, clubLogo, emblemShape = "square", groups, showTimes = true, showLocations = false }) {
+  const base = `font-family:${SANS};width:${GAZETTE_WIDTH}px;box-sizing:border-box;background:#ffffff;color:#0b1a3d;padding:44px 48px 36px 48px;`;
+  const sections = groups
+    .map((g, i) => {
+      const rows = g.fixtures.length
+        ? g.fixtures
+            .map((f) => {
+              const meta = [showTimes && f.time ? esc(f.time) : "", showLocations && f.location ? esc(f.location) : ""].filter(Boolean).join(" &#183; ");
+              return `<div style="font-size:19px;line-height:1.35;padding:7px 0;color:#0b1a3d;"><b style="font-weight:700;">${esc(f.team)}</b> vs ${esc(f.opponent || "TBC")}${meta ? `<span style="font-size:14px;color:#5a6785;margin-left:12px;">${meta}</span>` : ""}</div>`;
+            })
+            .join("")
+        : `<div style="font-size:15px;color:#7a86a1;padding:7px 0;">No fixtures</div>`;
+      return `<div style="${i > 0 ? "border-top:2px solid #d8deeb;margin-top:22px;padding-top:22px;" : "margin-top:6px;"}">
+  <div style="font-size:22px;font-weight:800;color:#1f5fd6;margin-bottom:8px;">${esc(fixtureDateLabel(g.date))}</div>${rows}</div>`;
+    })
+    .join("");
+  return `<div style="${base}">
+  <table style="width:100%;border-collapse:collapse;"><tr>
+    <td style="vertical-align:middle;"><div style="font-size:38px;font-weight:800;line-height:1.1;">${esc(clubName)}</div></td>
+    <td style="width:140px;vertical-align:top;text-align:right;">${emblemHtml(clubLogo, emblemShape, 120, "margin-left:auto;")}</td>
+  </tr></table>
+  <div style="font-size:28px;font-weight:700;letter-spacing:1px;margin:18px 0 22px 0;padding-bottom:14px;border-bottom:4px solid #1f5fd6;">Fixtures</div>
+  ${sections}
+  <div style="margin-top:30px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#9aa3b8;">Published with ClubComms</div>
+</div>`;
+}
