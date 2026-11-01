@@ -3,6 +3,7 @@ import { Users, ArrowLeft, ChevronRight, Camera } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
 import { toDateString, resizeImage, calcAge, displayAge, awardsForStat, statTotals } from "../lib/utils.js";
 import AccountSettings from "../components/AccountSettings.jsx";
+import MatchList from "../components/MatchList.jsx";
 import AppHeader, { useClubForTeam } from "../components/AppHeader.jsx";
 import { useAlertCounts } from "../lib/notifications.js";
 import Announcements from "./Announcements.jsx";
@@ -592,37 +593,16 @@ function ParentMatchDaysTab({ teamId, teamName }) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="font-display text-2xl tracking-wide mb-1">Match Days</h1>
-      <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-        Each match's report appears here once your coach has published it.
-      </p>
-      {loading ? (
-        <p style={{ color: "var(--muted)" }}>Loading…</p>
-      ) : matches.length === 0 ? (
-        <div className="glass-panel p-10 text-center" style={{ color: "var(--muted)" }}>No matches on the calendar yet.</div>
-      ) : (
-        <div className="space-y-2">
-          {matches.map((m) => (
-            <button key={m.id} className="glass-card w-full flex items-center gap-3 p-3 text-left" onClick={() => setOpenId(m.id)}>
-              <div className="flex-1">
-                <div className="font-medium">
-                  {`${teamName} vs ${m.opponent || "TBC"}`}
-                  {m.report && m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
-                    <span className="ml-2 text-sm" style={{ color: "#ffffff" }}>{m.our_score} - {m.their_score}</span>
-                  )}
-                </div>
-                <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                  {m.date}{m.time ? ` · ${m.time}` : ""}{m.location ? ` · ${m.location}` : ""}
-                  {m.report ? " · Match report available" : ""}
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--muted)" }} />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <MatchList
+      matches={matches}
+      teamName={teamName}
+      loading={loading}
+      intro="Each match's report appears here once your coach has published it."
+      emptyText="No upcoming matches on the calendar yet."
+      onOpen={(m) => setOpenId(m.id)}
+      showScore={(m) => !!m.report}
+      extra={(m) => m.report && <div className="text-sm mt-1" style={{ color: "#6fe39a" }}>Match report available</div>}
+    />
   );
 }
 

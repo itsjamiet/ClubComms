@@ -3,6 +3,7 @@ import { ArrowLeft, ChevronRight } from "lucide-react";
 import { supabase } from "../lib/supabaseClient.js";
 import { toDateString } from "../lib/utils.js";
 import ClubEvents from "./ClubEvents.jsx";
+import FixturesList from "./FixturesList.jsx";
 
 const WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -120,6 +121,7 @@ export default function ClubCalendarTab({ teams, role = "club", userId, clubId, 
   const [selectedDate, setSelectedDate] = useState(null);
   const [eventDates, setEventDates] = useState(new Set());
   const [loading, setLoading] = useState(true);
+  const [showFixtures, setShowFixtures] = useState(false);
 
   const year = monthCursor.getFullYear();
   const month = monthCursor.getMonth();
@@ -146,6 +148,10 @@ export default function ClubCalendarTab({ teams, role = "club", userId, clubId, 
       });
   }, [teams, year, month]);
 
+  if (showFixtures) {
+    return <FixturesList teams={teams} clubId={clubId || teams[0]?.club_id} onBack={() => setShowFixtures(false)} />;
+  }
+
   if (selectedDate) {
     return <ClubCalendarDay dateStr={selectedDate} teams={teams} onBack={() => setSelectedDate(null)} />;
   }
@@ -168,7 +174,12 @@ export default function ClubCalendarTab({ teams, role = "club", userId, clubId, 
 
       <ClubEvents role={role} clubId={clubId || teams[0]?.club_id} userId={userId} onResponded={onResponded} />
 
-      <h2 className="font-display text-xl tracking-wide mb-1">Team calendar</h2>
+      <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
+        <h2 className="font-display text-xl tracking-wide">Team calendar</h2>
+        {role === "club" && (
+          <button className="btn-accent px-4 py-2 rounded-lg text-sm" onClick={() => setShowFixtures(true)}>Fixtures list</button>
+        )}
+      </div>
       <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
         Matches and training from every team, in one place. Tap a day for details.
       </p>

@@ -3,6 +3,7 @@ import { Plus, Users, ArrowLeft, Camera, Trash2, ChevronRight, Pencil } from "lu
 import { supabase } from "../lib/supabaseClient.js";
 import { uid, toDateString, resizeImage, displayAge, calcAge, findStatIndex, awardsForStat, statTotals, AGE_GROUPS } from "../lib/utils.js";
 import AccountSettings from "../components/AccountSettings.jsx";
+import MatchList from "../components/MatchList.jsx";
 import AppHeader, { useClubForTeam } from "../components/AppHeader.jsx";
 import { useAlertCounts } from "../lib/notifications.js";
 import Announcements from "./Announcements.jsx";
@@ -1390,45 +1391,23 @@ function MatchDaysTab({ team }) {
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
-      <h1 className="font-display text-2xl tracking-wide mb-1">Match Days</h1>
-      <p className="text-sm mb-6" style={{ color: "var(--muted)" }}>
-        Every match on the calendar gets its own Match Day — squad selections, goals, and comments per quarter or half.
-      </p>
-      {loading || resolving ? (
-        <p style={{ color: "var(--muted)" }}>Loading…</p>
-      ) : matches.length === 0 ? (
-        <div className="glass-panel p-10 text-center" style={{ color: "var(--muted)" }}>
-          No matches on the calendar yet — add one from the Calendar tab.
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {matches.map((m) => (
-            <button key={m.id} className="glass-card w-full flex items-center gap-3 p-3 text-left" onClick={() => openMatch(m)}>
-              <div className="flex-1">
-                <div className="font-medium">
-                  {`${team.name} vs ${m.opponent || "TBC"}`}
-                  {m.our_score !== null && m.our_score !== undefined && m.their_score !== null && m.their_score !== undefined && (
-                    <span className="ml-2 text-sm" style={{ color: "#ffffff" }}>{m.our_score} - {m.their_score}</span>
-                  )}
-                </div>
-                <div className="text-xs mt-0.5" style={{ color: "var(--muted)" }}>
-                  {m.date}{m.time ? ` · ${m.time}` : ""}{m.location ? ` · ${m.location}` : ""}
-                </div>
-                {(m.awards?.captain || m.awards?.potm || m.awards?.parentsPotm) && (
-                  <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {m.awards.captain && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>Captain: {m.nameById[m.awards.captain] || "—"}</span>}
-                    {m.awards.potm && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.18)", color: "#f1d97a" }}>POTM: {m.nameById[m.awards.potm] || "—"}</span>}
-                    {m.awards.parentsPotm && <span className="text-[11px] px-2 py-0.5 rounded-full" style={{ background: "rgba(212,175,55,0.18)", color: "#f1d97a" }}>Parents' POTM: {m.nameById[m.awards.parentsPotm] || "—"}</span>}
-                  </div>
-                )}
-              </div>
-              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "var(--muted)" }} />
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <MatchList
+      matches={matches}
+      teamName={team.name}
+      loading={loading || resolving}
+      intro="Every match on the calendar gets its own Match Day — squad selections, goals, and comments per quarter or half."
+      emptyText="No upcoming matches — add one from the Calendar tab."
+      onOpen={openMatch}
+      extra={(m) =>
+        (m.awards?.captain || m.awards?.potm || m.awards?.parentsPotm) && (
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {m.awards.captain && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>Captain: {m.nameById[m.awards.captain] || "—"}</span>}
+            {m.awards.potm && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>POTM: {m.nameById[m.awards.potm] || "—"}</span>}
+            {m.awards.parentsPotm && <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: "rgba(255,255,255,0.08)" }}>Parents' POTM: {m.nameById[m.awards.parentsPotm] || "—"}</span>}
+          </div>
+        )
+      }
+    />
   );
 }
 
