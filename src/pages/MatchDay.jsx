@@ -5,7 +5,7 @@ import { useClubForTeam } from "../components/AppHeader.jsx";
 import { findStatIndex } from "../lib/utils.js";
 import { buildGazetteHtml, downloadGazettePng, printGazette, GAZETTE_WIDTH, GAZETTE_STYLES } from "../lib/gazette.js";
 
-export const FORMAT_SIZES = { "5v5": 5, "7v7": 7, "9v9": 9, "11v11": 11 };
+export const FORMAT_SIZES = { "5v5": 5, "6v6": 6, "7v7": 7, "9v9": 9, "11v11": 11 };
 const BREAKDOWN_COUNTS = { quarters: 4, halves: 2 };
 const BREAKDOWN_LABELS = {
   quarters: ["1st Quarter", "2nd Quarter", "3rd Quarter", "4th Quarter"],
@@ -35,6 +35,10 @@ export const FORMATIONS = {
   "5v5": [
     { id: "5-diamond", label: "Diamond (1-2-1)", lines: [1, 2, 1], xs: [28, 52, 78] },
     { id: "5-square", label: "Square (2-2)", lines: [2, 2], xs: [34, 70] },
+  ],
+  "6v6": [
+    { id: "6-221", label: "2-2-1", lines: [2, 2, 1], xs: [28, 52, 78] },
+    { id: "6-131", label: "1-3-1", lines: [1, 3, 1], xs: [28, 52, 78] },
   ],
   "7v7": [
     { id: "7-222", label: "2-2-2", lines: [2, 2, 2], xs: [28, 52, 78] },
@@ -824,6 +828,7 @@ export default function MatchDayView({ matchdayId, teamId, teamName = "Team", ed
             onChange={(e) => setFormat(e.target.value)}
           >
             <option value="5v5">5 v 5</option>
+            <option value="6v6">6 v 6</option>
             <option value="7v7">7 v 7</option>
             <option value="9v9">9 v 9</option>
             <option value="11v11">11 v 11</option>
